@@ -6,6 +6,8 @@
 
 export function nhsWeekUrl(week) {
   const w = Math.max(4, Math.min(41, Math.round(week) || 4));
+  // NHS URL grouping only (NHS files week 13 under its 2nd-trimester pages).
+  // The app itself uses US boundaries: 1st = 1–13, 2nd = 14–27, 3rd = 28+ (see trimesterForWeek).
   const tri = w <= 12 ? '1st-trimester' : w <= 27 ? '2nd-trimester' : '3rd-trimester';
   return `https://www.nhs.uk/best-start-in-life/pregnancy/week-by-week-guide-to-pregnancy/${tri}/week-${w}/`;
 }
@@ -22,9 +24,9 @@ export const WEEKS = {
   9: {"title": "Tiny movements", "size": "a grape", "baby": "Muscles start working; eyelids form. Movements are too small to feel.", "feel": "Emotions can feel louder. That's a hormone effect, not a failing.", "tip": "A gentle 10-minute stretch after waking can ease stiffness."},
   10: {"title": "More recognizable", "size": "an apricot", "baby": "Face looks more in proportion; ears and lips are forming. Heart beats quickly.", "feel": "Bloating, burping, and tiredness are common as digestion slows.", "tip": "Try smaller meals, eat slowly, and take a short stroll after eating."},
   11: {"title": "Bones hardening", "size": "a fig", "baby": "Bones begin to harden; tooth buds appear.", "feel": "Nausea may still be strong for some; others feel a slight lift.", "tip": "Cold fruit, ginger tea, or bland foods can settle an uneasy stomach."},
-  12: {"title": "End of first trimester", "size": "a lime", "baby": "Reflexes develop; fingerprints form. Risk of miscarriage drops for many.", "feel": "Energy may start returning. You might share news if you want to.", "tip": "Celebrate a small milestone — you've come a long way."},
-  13: {"title": "Second trimester begins", "size": "a lemon", "baby": "Vocal cords form; movement becomes more fluid.", "feel": "Energy often improves; appetite may pick up.", "tip": "Add a short outdoor walk if weather and energy allow."},
-  14: {"title": "Stretching out", "size": "an apple", "baby": "Facial muscles practice expressions; the neck lengthens.", "feel": "Round-ligament twinges can start as the uterus rises.", "tip": "Change positions slowly; support your belly when you stand."},
+  12: {"title": "Reflexes and fingerprints", "size": "a lime", "baby": "Reflexes develop; fingerprints form. Risk of miscarriage drops for many.", "feel": "Energy may start returning. You might share news if you want to.", "tip": "Celebrate a small milestone — you've come a long way."},
+  13: {"title": "End of first trimester", "size": "a lemon", "baby": "Vocal cords form; movement becomes more fluid.", "feel": "Energy often improves; appetite may pick up.", "tip": "Last week of the first trimester — add a short outdoor walk if weather and energy allow."},
+  14: {"title": "Second trimester begins", "size": "an apple", "baby": "Facial muscles practice expressions; the neck lengthens.", "feel": "Welcome to the second trimester. Round-ligament twinges can start as the uterus rises.", "tip": "Change positions slowly; support your belly when you stand."},
   15: {"title": "Senses awakening", "size": "an avocado", "baby": "Baby may sense light; legs grow longer than arms.", "feel": "Congestion or mild nosebleeds can come from extra blood volume.", "tip": "A cool-mist humidifier at night can feel soothing."},
   16: {"title": "Quickening soon", "size": "a large avocado", "baby": "The skeleton keeps hardening; muscles strengthen.", "feel": "You might feel fluttering soon, especially if this isn't a first pregnancy.", "tip": "Place a hand on your belly during quiet moments."},
   17: {"title": "Fat stores begin", "size": "a turnip", "baby": "Brown fat starts forming to help with temperature later.", "feel": "Backaches may show up. Supportive shoes help.", "tip": "Swap heels for flats; gently stretch hip flexors."},
@@ -37,8 +39,8 @@ export const WEEKS = {
   24: {"title": "Lung progress", "size": "an ear of corn", "baby": "Lungs make surfactant; growth continues steadily.", "feel": "Glucose screening is often discussed around now.", "tip": "Keep snacks balanced — protein with complex carbs."},
   25: {"title": "Responding to voice", "size": "a cauliflower", "baby": "Baby may respond to familiar voices.", "feel": "Heartburn can intensify in the evenings.", "tip": "Smaller evening meals; elevate your head slightly for sleep if reflux bothers you."},
   26: {"title": "Eyes opening", "size": "a head of lettuce", "baby": "Eyes can open; eyelashes form.", "feel": "Ankle or foot swelling can show up — elevate when resting.", "tip": "Ask your clinician before trying compression socks."},
-  27: {"title": "Third trimester begins", "size": "a large cauliflower", "baby": "Brain activity increases; senses keep maturing.", "feel": "Fatigue may return. Rest counts as progress.", "tip": "Wind down: dim lights, phone away, short stretch."},
-  28: {"title": "Dream sleep possible", "size": "an eggplant", "baby": "REM sleep may occur; baby packs on weight.", "feel": "If you're Rh-negative, an immune globulin shot may be offered.", "tip": "Add third-trimester appointments to your shared list."},
+  27: {"title": "End of second trimester", "size": "a large cauliflower", "baby": "Brain activity increases; senses keep maturing.", "feel": "Last week of the second trimester. Fatigue may return; rest counts as progress.", "tip": "Wind down: dim lights, phone away, short stretch."},
+  28: {"title": "Third trimester begins", "size": "an eggplant", "baby": "Welcome to the third trimester. REM (dream) sleep may occur; baby packs on weight.", "feel": "If you're Rh-negative, an immune globulin shot may be offered.", "tip": "Add third-trimester appointments to your shared list."},
   29: {"title": "Stronger kicks", "size": "a butternut squash", "baby": "Kicks feel stronger; lungs keep practicing breathing motions.", "feel": "Left-side sleep is often suggested; pillows help hips.", "tip": "Try a pillow between the knees for comfort."},
   30: {"title": "Brain packing in", "size": "a cabbage", "baby": "Brain grows quickly; baby gains fat.", "feel": "Braxton Hicks may feel more noticeable. Time them if you're unsure.", "tip": "Call your care team about any pattern that worries you."},
   31: {"title": "All senses working", "size": "a coconut", "baby": "All five senses work; sound processing improves.", "feel": "Nesting urges are real — pace cleaning and errands.", "tip": "One small prep task per day beats a marathon."},

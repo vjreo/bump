@@ -1,6 +1,7 @@
 /**
  * Practical prep by pregnancy week (due-date week).
  * Short household checklists — not medical advice.
+ * Bands follow US trimester boundaries: 1st = weeks 1–13, 2nd = 14–27, 3rd = 28+.
  */
 
 const BANDS = [
@@ -20,7 +21,7 @@ const BANDS = [
   },
   {
     from: 8,
-    to: 12,
+    to: 13,
     title: 'First trimester wrap',
     thisWeek: [
       'Confirm first prenatal appointment is on the calendar',
@@ -33,7 +34,7 @@ const BANDS = [
     ],
   },
   {
-    from: 13,
+    from: 14,
     to: 17,
     title: 'Second trimester settle-in',
     thisWeek: [
