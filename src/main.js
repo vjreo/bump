@@ -1,6 +1,7 @@
 import './style.css';
 import * as store from './store.js';
 import { getWeekContent } from './data/weeks.js';
+import { getPrepForWeek } from './data/prep.js';
 import { suggestionForDate, randomSuggestion } from './data/movements.js';
 import {
   todayNY,
@@ -248,6 +249,26 @@ function viewToday({ due, week, daysLeft, log, today }) {
     </div>
 
     ${weekCardHtml(content)}
+
+    ${(() => {
+      const prep = getPrepForWeek(week);
+      if (!prep) return '';
+      const thisItems = prep.thisWeek.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+      const upItems = prep.comingUp.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+      return `
+    <div class="card prep-card">
+      <div class="card-head">
+        <h3 class="card-title">🧺 Prepare this week</h3>
+        <span class="chip">${escapeHtml(prep.bandTitle)}</span>
+      </div>
+      <ul class="prep-list">${thisItems}</ul>
+      <div class="prep-coming">
+        <h4 class="prep-coming-title">${escapeHtml(prep.comingLabel)}</h4>
+        <ul class="prep-list muted">${upItems}</ul>
+      </div>
+      <p class="disclaimer">Practical household reminders — not medical advice. Follow your OB or midwife’s plan.</p>
+    </div>`;
+    })()}
 
     <div class="card">
       <div class="card-head">

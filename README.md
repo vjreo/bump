@@ -12,6 +12,7 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - Appointments with day-before buffer flag
 - Shared notes
 - Export / Import JSON to sync phones manually
+- **Prepare this week / Coming up** — practical prep checklist from due-date week
 
 ## Quick start
 
