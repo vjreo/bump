@@ -3,7 +3,15 @@ import * as store from './store.js';
 import { isInviteOk, tryInvite } from './invite.js';
 import { getWeekContent } from './data/weeks.js';
 import { getPrepForWeek } from './data/prep.js';
-import { workoutFor, LOAD_GUIDE, INTENSITY_LINE, STOP_SIGNS, CHECK_WITH_OB } from './data/workouts.js';
+import {
+  workoutFor,
+  walkFor,
+  LOAD_GUIDE,
+  EFFORT_LINE,
+  INTENSITY_LINE,
+  STOP_SIGNS,
+  CHECK_WITH_OB,
+} from './data/workouts.js';
 import * as calendar from './calendar.js';
 import { CALENDAR_TAG, CALENDAR_PAST_LIMIT } from './config.js';
 import {
@@ -272,9 +280,11 @@ function dueCountdown(daysLeft) {
   return { n: Math.abs(daysLeft), l: 'Days past due' };
 }
 
-/** Today's workout card: session name + compact list; tap to expand the full plan. */
+/** Today's workout + walk card: compact summary; tap to expand the full plan and safety details. */
 function workoutCard(week, log) {
-  const w = workoutFor(todayNY(), week);
+  const day = todayNY();
+  const w = workoutFor(day, week);
+  const walk = walkFor(day, week);
   const moveItem = (m) => `
     <li>
       <div class="wo-move"><span class="wo-move-name">${escapeHtml(m.name)}</span><span class="wo-dose">${escapeHtml(m.dose)}</span></div>
@@ -283,34 +293,40 @@ function workoutCard(week, log) {
   const section = (title, moves) => `
     <h4 class="wo-section">${title}</h4>
     <ul class="wo-list">${moves.map(moveItem).join('')}</ul>`;
-  const done = Boolean(log.movementDone);
+  const check = (id, label, done) => `
+    <button class="wo-check ${done ? 'on' : ''}" id="${id}" aria-pressed="${done}" aria-label="${label} done">
+      <span class="wo-box" aria-hidden="true">${done ? '✓' : ''}</span>${label}
+    </button>`;
   return `
     <div class="card workout-card">
-      <div class="card-head">
-        <h3 class="card-title">💪 Today’s workout</h3>
-        <span class="meta">~${w.minutes} min</span>
-      </div>
       <details class="wo-details" id="woDetails" ${workoutUi.detailsOpen ? 'open' : ''}>
         <summary>
-          <div class="wo-name">${escapeHtml(w.name)}</div>
-          <div class="meta">${escapeHtml(w.focus)} · kettlebell + bodyweight</div>
-          <ul class="wo-compact">${w.strength.map((m) => `<li>${escapeHtml(m.name)} <span>${escapeHtml(m.dose)}</span></li>`).join('')}</ul>
-          <span class="wo-toggle" aria-hidden="true"></span>
+          <div class="wo-head">
+            <h3 class="card-title">💪 ${escapeHtml(w.name)}</h3>
+            <span class="wo-mins">${w.minutes} min</span>
+            <span class="wo-toggle" aria-hidden="true"></span>
+          </div>
+          <div class="wo-line">${w.strength.map((m) => escapeHtml(m.short)).join(' · ')}</div>
+          <div class="wo-line wo-walk-line">🚶 ${escapeHtml(walk.name)} · ${escapeHtml(walk.dose)}</div>
         </summary>
         ${w.notes.length ? `<ul class="wo-notes">${w.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
-        ${section('Warm-up', w.warmup)}
-        ${section('Main set', w.strength)}
-        ${section('Mobility', w.mobility)}
+        ${section('Warm-up · 1–2 min', w.warmup)}
+        ${section('Strength', w.strength)}
+        ${section('Stretch', w.mobility)}
         <p class="wo-guide">${escapeHtml(LOAD_GUIDE)}</p>
+        <h4 class="wo-section">Walk</h4>
+        <ul class="wo-list"><li>
+          <div class="wo-move"><span class="wo-move-name">${escapeHtml(walk.name)}</span><span class="wo-dose">${escapeHtml(walk.dose)}</span></div>
+          <div class="wo-cue">${escapeHtml(walk.cue)} ${escapeHtml(walk.tip)}</div>
+        </li></ul>
+        <p class="wo-guide">${escapeHtml(INTENSITY_LINE)}</p>
       </details>
-      <div class="btn-row">
-        <button class="btn ${done ? 'btn-sage' : 'btn-soft'} btn-sm" id="moveDone" data-workout-id="${w.id}" aria-pressed="${done}">
-          ${done ? '✓ Done today' : 'Done today'}
-        </button>
+      <div class="wo-foot">
+        ${check('woDone', 'Workout', Boolean(log.movementDone))}
+        ${check('walkDone', 'Walk', Boolean(log.walkDone))}
       </div>
-      <p class="wo-safety">${escapeHtml(INTENSITY_LINE)}</p>
       <details class="wo-stop" id="woStop" ${workoutUi.stopOpen ? 'open' : ''}>
-        <summary>When to stop</summary>
+        <summary><span>${escapeHtml(EFFORT_LINE)}</span> <span class="wo-stop-link">When to stop</span></summary>
         <p>Stop and call your OB or midwife if you notice:</p>
         <ul>${STOP_SIGNS.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
         <p>${escapeHtml(CHECK_WITH_OB)}</p>
@@ -599,9 +615,14 @@ function bindView(main) {
       store.setWindDown(!store.getTodayLog().windDown);
       render();
     });
-    main.querySelector('#moveDone')?.addEventListener('click', (e) => {
+    main.querySelector('#woDone')?.addEventListener('click', () => {
+      const today = todayNY();
       const log = store.getTodayLog();
-      store.setWorkoutDone(!log.movementDone, e.currentTarget.dataset.workoutId);
+      store.setWorkoutDone(!log.movementDone, workoutFor(today, pregnancyWeek(store.getState().household.dueDate)).id);
+      render();
+    });
+    main.querySelector('#walkDone')?.addEventListener('click', () => {
+      store.setWalkDone(!store.getTodayLog().walkDone);
       render();
     });
     main.querySelector('#woDetails')?.addEventListener('toggle', (e) => { workoutUi.detailsOpen = e.target.open; });

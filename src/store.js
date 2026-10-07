@@ -38,6 +38,7 @@ function ensureDaily(state, date = todayNY()) {
       windDown: false,
       movementDone: false, // today's workout marked done
       workoutId: null, // which session was done (see data/workouts.js)
+      walkDone: false, // today's walk marked done
     };
   }
   return state.dailyLogs[date];
@@ -156,6 +157,14 @@ export function setWorkoutDone(done, workoutId = null) {
   const log = ensureDaily(s);
   log.movementDone = Boolean(done);
   log.workoutId = done ? workoutId : null;
+  persist();
+  return log;
+}
+
+export function setWalkDone(done) {
+  const s = getState();
+  const log = ensureDaily(s);
+  log.walkDone = Boolean(done);
   persist();
   return log;
 }
