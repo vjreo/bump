@@ -35,7 +35,6 @@ function ensureDaily(state, date = todayNY()) {
     state.dailyLogs[date] = {
       date,
       hydrationCount: 0,
-      windDown: false,
       movementDone: false, // today's workout marked done
       workoutId: null, // which session was done (see data/workouts.js)
       walkDone: false, // today's walk marked done
@@ -144,14 +143,6 @@ export function bumpHydration(delta = 1) {
   return log;
 }
 
-export function setWindDown(done) {
-  const s = getState();
-  const log = ensureDaily(s);
-  log.windDown = Boolean(done);
-  persist();
-  return log;
-}
-
 export function setWorkoutDone(done, workoutId = null) {
   const s = getState();
   const log = ensureDaily(s);
@@ -203,7 +194,10 @@ export function exportJSON() {
     exportedAt: new Date().toISOString(),
     app: 'bump-tracker',
     household,
-    dailyLogs: s.dailyLogs,
+    // Older logs may still carry a retired `windDown` flag; leave it in storage but not in backups.
+    dailyLogs: Object.fromEntries(
+      Object.entries(s.dailyLogs).map(([date, { windDown, ...log }]) => [date, log])
+    ),
     notes: s.notes,
   };
   return JSON.stringify(payload, null, 2);

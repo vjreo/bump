@@ -281,10 +281,10 @@ function dueCountdown(daysLeft) {
 }
 
 /** Shared "done" checkbox: a real checkbox inside a 44px-tall label (the label text toggles it too). */
-function checkbox(id, label, checked, hintId = '') {
+function checkbox(id, label, checked) {
   return `
     <label class="check" for="${id}">
-      <input type="checkbox" class="check-box" id="${id}" ${checked ? 'checked' : ''} ${hintId ? `aria-describedby="${hintId}"` : ''} />
+      <input type="checkbox" class="check-box" id="${id}" ${checked ? 'checked' : ''} />
       <span>${escapeHtml(label)}</span>
     </label>`;
 }
@@ -401,14 +401,6 @@ function viewToday({ due, week, daysLeft, log }) {
         </div>
       </div>
       <div class="hydro-glasses">${glasses}</div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">🌙 Evening wind-down</h3>
-      </div>
-      ${checkbox('windDone', 'Done for tonight', log.windDown, 'windHint')}
-      <div class="meta check-hint" id="windHint">Dim lights, stretch, phone away</div>
     </div>
 
     ${workoutCard(week, log)}
@@ -611,10 +603,6 @@ function bindView(main) {
   if (tab === 'today') {
     main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.bumpHydration(1); render(); });
     main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.bumpHydration(-1); render(); });
-    main.querySelector('#windDone')?.addEventListener('change', (e) => {
-      store.setWindDown(e.target.checked);
-      render();
-    });
     main.querySelector('#woDone')?.addEventListener('change', (e) => {
       const week = pregnancyWeek(store.getState().household.dueDate);
       store.setWorkoutDone(e.target.checked, workoutFor(todayNY(), week).id);

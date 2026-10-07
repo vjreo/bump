@@ -10,7 +10,7 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - **Today** stat cards: **trimester** (1st = weeks 1–13, 2nd = 14–27, 3rd = 28+), days to due (or days past due), and due date — all computed in America/New_York
 - Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
 - **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
-- Hydration log and evening wind-down
+- Hydration log
 - **Today’s workout + walk**: a short daily kettlebell + bodyweight session (10–15 min) plus a daily walk suggestion, picked from the date so both phones match, with separate Workout and Walk checks. See [Daily workout](#daily-workout).
 - **Appointments from Google Calendar** (read-only): only events with **[Bump]** in the title are shown (tag stripped). Upcoming ~6 months plus a collapsible list of recent past events; earlier ones grayed out, same-day ones tagged **Today**, day-before reminder for tomorrow’s. Last fetch is cached on the phone for offline viewing.
 - Shared notes
