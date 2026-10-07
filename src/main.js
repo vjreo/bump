@@ -294,9 +294,10 @@ function workoutCard(week, log) {
     <h4 class="wo-section">${title}</h4>
     <ul class="wo-list">${moves.map(moveItem).join('')}</ul>`;
   const check = (id, label, done) => `
-    <button class="wo-check ${done ? 'on' : ''}" id="${id}" aria-pressed="${done}" aria-label="${label} done">
-      <span class="wo-box" aria-hidden="true">${done ? '✓' : ''}</span>${label}
-    </button>`;
+    <label class="wo-check" for="${id}">
+      <input type="checkbox" class="wo-box" id="${id}" ${done ? 'checked' : ''} />
+      <span>${label}</span>
+    </label>`;
   return `
     <div class="card workout-card">
       <details class="wo-details" id="woDetails" ${workoutUi.detailsOpen ? 'open' : ''}>
@@ -615,14 +616,13 @@ function bindView(main) {
       store.setWindDown(!store.getTodayLog().windDown);
       render();
     });
-    main.querySelector('#woDone')?.addEventListener('click', () => {
-      const today = todayNY();
-      const log = store.getTodayLog();
-      store.setWorkoutDone(!log.movementDone, workoutFor(today, pregnancyWeek(store.getState().household.dueDate)).id);
+    main.querySelector('#woDone')?.addEventListener('change', (e) => {
+      const week = pregnancyWeek(store.getState().household.dueDate);
+      store.setWorkoutDone(e.target.checked, workoutFor(todayNY(), week).id);
       render();
     });
-    main.querySelector('#walkDone')?.addEventListener('click', () => {
-      store.setWalkDone(!store.getTodayLog().walkDone);
+    main.querySelector('#walkDone')?.addEventListener('change', (e) => {
+      store.setWalkDone(e.target.checked);
       render();
     });
     main.querySelector('#woDetails')?.addEventListener('toggle', (e) => { workoutUi.detailsOpen = e.target.open; });
