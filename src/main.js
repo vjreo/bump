@@ -1,5 +1,6 @@
 import './style.css';
 import * as store from './store.js';
+import { isInviteOk, tryInvite } from './invite.js';
 import { getWeekContent } from './data/weeks.js';
 import { getPrepForWeek } from './data/prep.js';
 import { suggestionForDate, randomSuggestion } from './data/movements.js';
@@ -18,7 +19,7 @@ const app = document.getElementById('app');
 
 let tab = 'today';
 let browseWeek = null;
-let gateMode = 'auto'; // auto | unlock | setup | import
+let gateMode = 'auto'; // auto | invite | unlock | setup | import
 
 store.load();
 
@@ -32,7 +33,15 @@ function escapeHtml(s) {
 
 function render() {
   const s = store.getState();
+  if (!isInviteOk()) {
+    gateMode = 'invite';
+    renderGate();
+    return;
+  }
   if (!store.isSetup() || !store.isUnlocked()) {
+    if (gateMode === 'invite' || gateMode === 'auto') {
+      gateMode = store.isSetup() ? 'unlock' : 'setup';
+    }
     renderGate();
     return;
   }
@@ -41,7 +50,44 @@ function render() {
 
 function renderGate() {
   const setup = store.isSetup();
-  if (gateMode === 'auto') gateMode = setup ? 'unlock' : 'setup';
+  if (gateMode === 'auto') gateMode = !isInviteOk() ? 'invite' : (setup ? 'unlock' : 'setup');
+
+  if (gateMode === 'invite') {
+    app.innerHTML = `
+      <div class="gate">
+        <div class="gate-card">
+          <div class="brand">
+            <div class="brand-mark">🌱</div>
+            <h1>Bump</h1>
+            <p>Invite-only for now</p>
+          </div>
+          <div class="field">
+            <label class="label" for="inviteCode">Invite code</label>
+            <input class="input" type="text" id="inviteCode" placeholder="bump-…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <p class="hint">Ask Vince for an invite if you don’t have one.</p>
+          </div>
+          <p class="err hidden" id="gateErr"></p>
+          <button class="btn btn-primary" id="doInvite">Continue</button>
+        </div>
+      </div>`;
+    const inviteEl = app.querySelector('#inviteCode');
+    inviteEl.focus();
+    const tryUnlockInvite = async () => {
+      const err = app.querySelector('#gateErr');
+      err.classList.add('hidden');
+      const ok = await tryInvite(inviteEl.value);
+      if (ok) {
+        gateMode = 'auto';
+        render();
+      } else {
+        err.textContent = 'That invite doesn’t match. Double-check and try again.';
+        err.classList.remove('hidden');
+      }
+    };
+    app.querySelector('#doInvite').onclick = tryUnlockInvite;
+    inviteEl.onkeydown = (e) => { if (e.key === 'Enter') tryUnlockInvite(); };
+    return;
+  }
 
   if (gateMode === 'import') {
     app.innerHTML = `
