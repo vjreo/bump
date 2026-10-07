@@ -10,7 +10,8 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - **Today** stat cards: **trimester** (1st = weeks 1–13, 2nd = 14–27, 3rd = 28+), days to due (or days past due), and due date — all computed in America/New_York
 - Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
 - **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
-- Hydration log, evening wind-down, daily gentle movement
+- Hydration log and evening wind-down
+- **Today’s workout** (kettlebell + bodyweight): one session per day, picked from the date so both phones match, with a “Done today” check. See [Daily workout](#daily-workout).
 - **Appointments from Google Calendar** (read-only): only events with **[Bump]** in the title are shown (tag stripped). Upcoming ~6 months plus a collapsible list of recent past events; earlier ones grayed out, same-day ones tagged **Today**, day-before reminder for tomorrow’s. Last fetch is cached on the phone for offline viewing.
 - Shared notes
 - **Settings → Download a backup** saves a JSON copy of your data (due date, logs, notes; not the PIN or calendar events)
@@ -63,6 +64,23 @@ To rotate: generate a new code, update `VITE_INVITE_HASH` / `.env.production`, r
 ## Design
 
 Earthy palette: warm clay, sage green, sand/cream. Tabs: Today | Appts | Notes | Settings.
+
+## Daily workout
+
+The Today card rotates through five ~20–35 minute sessions, one per day: **Lower body strength → Upper body & back → Active recovery → Full body strength → Mobility & core stability**. Each has a short warm-up, 3–5 strength moves, and 2–4 mobility moves. The session is chosen from the America/New_York date, so both phones show the same workout. Everything is static and runs in the browser; no backend.
+
+Adjustments by US trimester:
+- **From week 16:** moves done lying flat on the back (or face-down on the floor) switch to incline, hands-elevated, or side-lying versions. That’s earlier than ACOG’s 20-week note, to be cautious.
+- **3rd trimester (week 28+):** loads drop one step (moderate → light), there are fewer sets, and balance-heavy moves get support (box squats, supported split squats, seated presses, side-lying clamshells).
+- **Always:** no contact, jumping, or ballistic lifts; no crunches or deep twisting; exhale on effort (no breath-holding). Core work is breathing, bird dogs, and side-plank variations.
+
+Kettlebell weights are relative (“light” and “moderate”, meaning a weight you can lift with good form and steady breathing). To adjust them, or to change doses, swaps, sessions, or the safety copy, edit **`src/data/workouts.js`**; all the settings live there.
+
+Not medical advice. The card says to check with an OB or midwife before starting, and it lists ACOG’s warning signs for stopping.
+
+**Sources:**
+- ACOG Committee Opinion No. 804, *Physical Activity and Exercise During Pregnancy and the Postpartum Period* (Obstet Gynecol 2020;135:e178–88): https://www.acog.org/clinical/clinical-guidance/committee-opinion/articles/2020/04/physical-activity-and-exercise-during-pregnancy-and-the-postpartum-period
+- ACOG FAQ, *Exercise During Pregnancy*: https://www.acog.org/womens-health/faqs/exercise-during-pregnancy
 
 ## Week content
 

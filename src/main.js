@@ -3,7 +3,7 @@ import * as store from './store.js';
 import { isInviteOk, tryInvite } from './invite.js';
 import { getWeekContent } from './data/weeks.js';
 import { getPrepForWeek } from './data/prep.js';
-import { randomSuggestion } from './data/movements.js';
+import { workoutFor, LOAD_GUIDE, INTENSITY_LINE, STOP_SIGNS, CHECK_WITH_OB } from './data/workouts.js';
 import * as calendar from './calendar.js';
 import { CALENDAR_TAG, CALENDAR_PAST_LIMIT } from './config.js';
 import {
@@ -29,6 +29,8 @@ const PIN_RULE = /^\d{4,}$/;
 const PIN_ERROR = 'PIN should be at least 4 digits (numbers only)';
 // Google Calendar sync status for the Appts tab (events themselves are cached by calendar.js)
 const cal = { loading: false, error: '', needsReconnect: false, stale: false, pastOpen: false };
+// Open/closed state of the workout card's expandable sections (kept across re-renders)
+const workoutUi = { detailsOpen: false, stopOpen: false };
 const CAL_HELP = `Add ${CALENDAR_TAG} to an event title in your Google Calendar to show it here.`;
 
 store.load();
@@ -270,6 +272,52 @@ function dueCountdown(daysLeft) {
   return { n: Math.abs(daysLeft), l: 'Days past due' };
 }
 
+/** Today's workout card: session name + compact list; tap to expand the full plan. */
+function workoutCard(week, log) {
+  const w = workoutFor(todayNY(), week);
+  const moveItem = (m) => `
+    <li>
+      <div class="wo-move"><span class="wo-move-name">${escapeHtml(m.name)}</span><span class="wo-dose">${escapeHtml(m.dose)}</span></div>
+      <div class="wo-cue">${m.loadKey !== 'bodyweight' ? `<span class="wo-load">${escapeHtml(m.loadLabel)}</span> · ` : ''}${escapeHtml(m.cue)}</div>
+    </li>`;
+  const section = (title, moves) => `
+    <h4 class="wo-section">${title}</h4>
+    <ul class="wo-list">${moves.map(moveItem).join('')}</ul>`;
+  const done = Boolean(log.movementDone);
+  return `
+    <div class="card workout-card">
+      <div class="card-head">
+        <h3 class="card-title">💪 Today’s workout</h3>
+        <span class="meta">~${w.minutes} min</span>
+      </div>
+      <details class="wo-details" id="woDetails" ${workoutUi.detailsOpen ? 'open' : ''}>
+        <summary>
+          <div class="wo-name">${escapeHtml(w.name)}</div>
+          <div class="meta">${escapeHtml(w.focus)} · kettlebell + bodyweight</div>
+          <ul class="wo-compact">${w.strength.map((m) => `<li>${escapeHtml(m.name)} <span>${escapeHtml(m.dose)}</span></li>`).join('')}</ul>
+          <span class="wo-toggle" aria-hidden="true"></span>
+        </summary>
+        ${w.notes.length ? `<ul class="wo-notes">${w.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>` : ''}
+        ${section('Warm-up', w.warmup)}
+        ${section('Main set', w.strength)}
+        ${section('Mobility', w.mobility)}
+        <p class="wo-guide">${escapeHtml(LOAD_GUIDE)}</p>
+      </details>
+      <div class="btn-row">
+        <button class="btn ${done ? 'btn-sage' : 'btn-soft'} btn-sm" id="moveDone" data-workout-id="${w.id}" aria-pressed="${done}">
+          ${done ? '✓ Done today' : 'Done today'}
+        </button>
+      </div>
+      <p class="wo-safety">${escapeHtml(INTENSITY_LINE)}</p>
+      <details class="wo-stop" id="woStop" ${workoutUi.stopOpen ? 'open' : ''}>
+        <summary>When to stop</summary>
+        <p>Stop and call your OB or midwife if you notice:</p>
+        <ul>${STOP_SIGNS.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+        <p>${escapeHtml(CHECK_WITH_OB)}</p>
+      </details>
+    </div>`;
+}
+
 function viewToday({ due, week, daysLeft, log }) {
   const content = getWeekContent(week);
   const shownWeek = browseWeek ?? week;
@@ -347,21 +395,7 @@ function viewToday({ due, week, daysLeft, log }) {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-head">
-        <h3 class="card-title">🚶 Daily movement</h3>
-      </div>
-      <div class="movement-type">${escapeHtml(log.movementType || '')}</div>
-      <div class="movement-title">${escapeHtml(log.movementSuggestion || '')}</div>
-      <p class="movement-detail">${escapeHtml(log.movementDetail || '')}</p>
-      <div class="btn-row">
-        <button class="btn ${log.movementDone ? 'btn-sage' : 'btn-soft'} btn-sm" id="moveDone">
-          ${log.movementDone ? '✓ Done' : 'Mark done'}
-        </button>
-        <button class="btn btn-ghost btn-sm" id="moveRegen">Another idea</button>
-      </div>
-      <p class="disclaimer">Gentle suggestions only — not a workout plan. Skip anything that doesn’t feel right; check with your care team if unsure.</p>
-    </div>
+    ${workoutCard(week, log)}
 
     <div class="card">
       <div class="card-head">
@@ -565,16 +599,13 @@ function bindView(main) {
       store.setWindDown(!store.getTodayLog().windDown);
       render();
     });
-    main.querySelector('#moveDone')?.addEventListener('click', () => {
+    main.querySelector('#moveDone')?.addEventListener('click', (e) => {
       const log = store.getTodayLog();
-      store.setMovementDone(!log.movementDone);
+      store.setWorkoutDone(!log.movementDone, e.currentTarget.dataset.workoutId);
       render();
     });
-    main.querySelector('#moveRegen')?.addEventListener('click', () => {
-      const log = store.getTodayLog();
-      store.setMovementSuggestion(randomSuggestion(log.movementSuggestion));
-      render();
-    });
+    main.querySelector('#woDetails')?.addEventListener('toggle', (e) => { workoutUi.detailsOpen = e.target.open; });
+    main.querySelector('#woStop')?.addEventListener('toggle', (e) => { workoutUi.stopOpen = e.target.open; });
     main.querySelectorAll('[data-browse-week]').forEach((btn) => {
       btn.addEventListener('click', () => {
         browseWeek = Number(btn.dataset.browseWeek);

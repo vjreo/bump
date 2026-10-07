@@ -5,7 +5,6 @@
  * manual appointments are left untouched in storage but no longer used or exported.)
  */
 import { todayNY } from './utils/dates.js';
-import { suggestionForDate } from './data/movements.js';
 
 const STORAGE_KEY = 'bump.v1';
 const SCHEMA_VERSION = 1;
@@ -33,15 +32,12 @@ function emptyState() {
 
 function ensureDaily(state, date = todayNY()) {
   if (!state.dailyLogs[date]) {
-    const sug = suggestionForDate(date);
     state.dailyLogs[date] = {
       date,
       hydrationCount: 0,
       windDown: false,
-      movementDone: false,
-      movementSuggestion: sug.title,
-      movementDetail: sug.detail,
-      movementType: sug.type,
+      movementDone: false, // today's workout marked done
+      workoutId: null, // which session was done (see data/workouts.js)
     };
   }
   return state.dailyLogs[date];
@@ -155,21 +151,11 @@ export function setWindDown(done) {
   return log;
 }
 
-export function setMovementDone(done) {
+export function setWorkoutDone(done, workoutId = null) {
   const s = getState();
   const log = ensureDaily(s);
   log.movementDone = Boolean(done);
-  persist();
-  return log;
-}
-
-export function setMovementSuggestion(sug) {
-  const s = getState();
-  const log = ensureDaily(s);
-  log.movementSuggestion = sug.title;
-  log.movementDetail = sug.detail;
-  log.movementType = sug.type;
-  log.movementDone = false;
+  log.workoutId = done ? workoutId : null;
   persist();
   return log;
 }

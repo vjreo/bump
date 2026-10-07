@@ -354,15 +354,31 @@ a { color: var(--sage-deep); }
 }
 .toggle.on::after { transform: translateX(22px); }
 
-.movement-type {
-  text-transform: capitalize;
-  font-size: 0.75rem;
-  font-weight: 650;
-  color: var(--clay);
-  letter-spacing: 0.04em;
-}
-.movement-title { font-weight: 650; margin: 2px 0 4px; }
-.movement-detail { color: var(--ink-muted); font-size: 0.9rem; margin: 0 0 12px; }
+.wo-details > summary { list-style: none; cursor: pointer; position: relative; padding-right: 26px; }
+.wo-details > summary::-webkit-details-marker { display: none; }
+.wo-name { font-weight: 650; font-size: 1.05rem; margin-bottom: 2px; }
+.wo-compact { list-style: none; margin: 8px 0 0; padding: 0; font-size: 0.9rem; }
+.wo-compact li { padding: 3px 0; display: flex; justify-content: space-between; gap: 10px; }
+.wo-compact li span { color: var(--ink-muted); white-space: nowrap; font-size: 0.82rem; }
+.wo-toggle { position: absolute; top: 4px; right: 2px; width: 9px; height: 9px; border-right: 2px solid var(--ink-muted); border-bottom: 2px solid var(--ink-muted); transform: rotate(45deg); transition: transform 0.2s; }
+.wo-details[open] .wo-toggle { transform: rotate(-135deg); top: 9px; }
+.wo-details[open] .wo-compact { display: none; }
+.wo-notes { margin: 10px 0 0; padding: 8px 12px 8px 26px; background: var(--sage-mist); border-radius: 10px; font-size: 0.85rem; }
+.wo-section { margin: 14px 0 4px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--clay); }
+.wo-list { list-style: none; margin: 0; padding: 0; }
+.wo-list li { padding: 7px 0; border-bottom: 1px solid var(--line); }
+.wo-list li:last-child { border-bottom: none; }
+.wo-move { display: flex; justify-content: space-between; gap: 10px; font-weight: 650; font-size: 0.92rem; }
+.wo-dose { font-weight: 500; color: var(--ink-muted); font-size: 0.82rem; white-space: nowrap; }
+.wo-cue { color: var(--ink-muted); font-size: 0.82rem; margin-top: 2px; }
+.wo-load { color: var(--clay); font-weight: 650; }
+.wo-guide { font-size: 0.82rem; color: var(--ink-muted); margin: 10px 0 0; }
+.workout-card .btn-row { margin-top: 12px; }
+.wo-safety { font-size: 0.8rem; color: var(--ink-muted); margin: 10px 0 0; line-height: 1.4; }
+.wo-stop { margin-top: 6px; font-size: 0.82rem; }
+.wo-stop summary { cursor: pointer; font-weight: 650; color: var(--clay); padding: 4px 0; }
+.wo-stop ul { margin: 4px 0; padding-left: 20px; }
+.wo-stop p { margin: 6px 0; }
 
 /* Lists */
 .list-item {
