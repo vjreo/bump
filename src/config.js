@@ -3,7 +3,7 @@
  * A Google OAuth *web* client ID is public by design, so it's fine to ship it.
  */
 
-/** Set VITE_GOOGLE_CLIENT_ID in .env.production (build) or .env (dev). Empty = calendar not set up. */
+/** Set VITE_GOOGLE_CLIENT_ID in .env.production (build) or .env (dev). Empty = Google features not set up. */
 const rawClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
 export const GOOGLE_CLIENT_ID = rawClientId.endsWith('.apps.googleusercontent.com') ? rawClientId : '';
 
@@ -15,6 +15,17 @@ export const CALENDAR_TAG = '[Bump]';
 
 /** Read-only access to events. */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly';
+
+/**
+ * Shared notes doc. drive.file is Google's least-privilege Drive scope: Bump can only see and
+ * edit files it created (or that were opened with it), never the rest of the Drive. Access is
+ * granted per Google Cloud project, so both phones (same account, same client ID) see the same doc.
+ */
+export const NOTES_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+export const NOTES_DOC_TITLE = 'Bump Notes';
+
+/** One combined sign-in asks for everything Bump uses. */
+export const ALL_SCOPES = [CALENDAR_SCOPE, NOTES_SCOPE];
 
 /** How far ahead / back to fetch, and how many past events to list. */
 export const CALENDAR_LOOKAHEAD_DAYS = 183;

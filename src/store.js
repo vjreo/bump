@@ -160,28 +160,17 @@ export function setWalkDone(done) {
   return log;
 }
 
+/** Notes saved only on this phone (from before shared notes); used for the one-time copy. */
 export function listNotes() {
   return [...getState().notes].sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
   );
 }
 
-export function addNote({ body, author = '' }) {
+/** After copying them to the shared Google Doc, stop keeping notes on this phone. */
+export function clearLocalNotes() {
   const s = getState();
-  const note = {
-    id: uid(),
-    body: body.trim(),
-    author: author.trim(),
-    createdAt: new Date().toISOString(),
-  };
-  s.notes.unshift(note);
-  persist();
-  return note;
-}
-
-export function deleteNote(id) {
-  const s = getState();
-  s.notes = s.notes.filter((n) => n.id !== id);
+  s.notes = [];
   persist();
 }
 

@@ -1,129 +1,30 @@
 /**
- * Google Calendar (read-only) via Google Identity Services token flow.
+ * Google Calendar (read-only). Sign-in lives in google.js (shared with Notes).
  * Only events tagged with CALENDAR_TAG are kept; nothing else is displayed or stored.
  */
 import {
-  GOOGLE_CLIENT_ID,
   CALENDAR_ID,
   CALENDAR_TAG,
   CALENDAR_SCOPE,
+  ALL_SCOPES,
   CALENDAR_LOOKAHEAD_DAYS,
   CALENDAR_LOOKBACK_DAYS,
 } from './config.js';
+import { isConfigured, readJSON, writeJSON, validToken, clearToken, authorize, revokeAll, hasGranted, grantedScopes } from './google.js';
 
-const GIS_SRC = 'https://accounts.google.com/gsi/client';
-const TOKEN_KEY = 'bump.gcal.token.v1'; // { accessToken, expiresAt } — short-lived (about 1 hour)
+export { isConfigured };
+
 const CACHE_KEY = 'bump.gcal.cache.v1'; // { events, fetchedAt } — tagged events only
 
 const DAY_MS = 86400000;
 
-export function isConfigured() {
-  return Boolean(GOOGLE_CLIENT_ID);
-}
-
-function readJSON(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || 'null');
-  } catch {
-    return null;
-  }
-}
-
-function writeJSON(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn('[bump] calendar storage failed', e);
-  }
-}
-
-/** Connected = the user has authorized at least once and hasn't disconnected. */
+/** Connected = Calendar access was granted (or events were fetched) and the user hasn't disconnected. */
 export function isConnected() {
-  return Boolean(readJSON(CACHE_KEY));
+  return Boolean(readJSON(CACHE_KEY)) || hasGranted(CALENDAR_SCOPE);
 }
 
 export function getCache() {
   return readJSON(CACHE_KEY) || { events: [], fetchedAt: null };
-}
-
-function validToken() {
-  const t = readJSON(TOKEN_KEY);
-  return t && t.accessToken && t.expiresAt > Date.now() + 60000 ? t.accessToken : null;
-}
-
-// ---------- Google Identity Services ----------
-
-let gisPromise = null;
-
-/** Load the GIS script once (only when a client ID is configured). */
-export function loadGis() {
-  if (!isConfigured()) return Promise.reject(new Error('Calendar not set up'));
-  if (window.google?.accounts?.oauth2) return Promise.resolve();
-  if (!gisPromise) {
-    gisPromise = new Promise((resolve, reject) => {
-      const el = document.createElement('script');
-      el.src = GIS_SRC;
-      el.async = true;
-      el.defer = true;
-      el.onload = () => resolve();
-      el.onerror = () => {
-        gisPromise = null;
-        reject(new Error('Could not load Google sign-in'));
-      };
-      document.head.appendChild(el);
-    });
-  }
-  return gisPromise;
-}
-
-let tokenClient = null;
-let pending = null;
-
-function getTokenClient() {
-  if (tokenClient) return tokenClient;
-  tokenClient = window.google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: CALENDAR_SCOPE,
-    callback: (resp) => {
-      const p = pending;
-      pending = null;
-      if (!p) return;
-      if (!resp || resp.error || !resp.access_token) {
-        p.reject(new Error(resp?.error_description || resp?.error || 'Authorization failed'));
-        return;
-      }
-      if (!window.google.accounts.oauth2.hasGrantedAllScopes(resp, CALENDAR_SCOPE)) {
-        p.reject(new Error('Calendar access was not granted'));
-        return;
-      }
-      const expiresIn = Number(resp.expires_in) || 3600;
-      writeJSON(TOKEN_KEY, { accessToken: resp.access_token, expiresAt: Date.now() + expiresIn * 1000 });
-      p.resolve(resp.access_token);
-    },
-    error_callback: (err) => {
-      const p = pending;
-      pending = null;
-      if (p) p.reject(new Error(err?.type === 'popup_closed' ? 'Sign-in window closed' : 'Could not open Google sign-in'));
-    },
-  });
-  return tokenClient;
-}
-
-/**
- * Ask GIS for an access token. prompt '' = no consent screen if already granted.
- * Must run from a user gesture (tap) or browsers may block the sign-in popup.
- */
-function requestToken(prompt = '') {
-  return new Promise((resolve, reject) => {
-    if (pending) pending.reject(new Error('Superseded'));
-    pending = { resolve, reject };
-    try {
-      getTokenClient().requestAccessToken({ prompt });
-    } catch (e) {
-      pending = null;
-      reject(e);
-    }
-  });
 }
 
 // ---------- Calendar API ----------
@@ -190,17 +91,20 @@ async function fetchTagged(accessToken) {
  * Refresh tagged events.
  * interactive=true (from a tap): may request a token (silently if already granted).
  * interactive=false (e.g., app regains focus): only uses a still-valid token.
+ * The first connect asks for Calendar + Notes in one consent screen.
  * Returns { ok, needsReconnect?, error? }.
  */
 export async function refresh({ interactive = false, consent = false } = {}) {
   if (!isConfigured()) return { ok: false, error: 'Calendar not set up' };
-  let token = consent ? null : validToken();
+  let token = consent ? null : validToken(CALENDAR_SCOPE);
   for (let attempt = 0; attempt < 2; attempt++) {
     if (!token) {
       if (!interactive) return { ok: false, needsReconnect: true };
       try {
-        await loadGis();
-        token = await requestToken(consent ? 'consent' : '');
+        const need = grantedScopes().length ? [CALENDAR_SCOPE] : ALL_SCOPES; // first sign-in covers Notes too
+        const { accessToken, scopes } = await authorize(need, { prompt: consent ? 'consent' : '' });
+        if (!scopes.includes(CALENDAR_SCOPE)) throw new Error('Calendar access was not granted');
+        token = accessToken;
       } catch (e) {
         return { ok: false, needsReconnect: true, error: e.message };
       }
@@ -211,7 +115,7 @@ export async function refresh({ interactive = false, consent = false } = {}) {
       return { ok: true };
     } catch (e) {
       if (e instanceof AuthError) {
-        localStorage.removeItem(TOKEN_KEY);
+        clearToken();
         token = null;
         continue; // retry once with a fresh token (interactive only)
       }
@@ -221,17 +125,13 @@ export async function refresh({ interactive = false, consent = false } = {}) {
   return { ok: false, needsReconnect: true };
 }
 
-/** Revoke access (if we still hold a token) and clear the token + cached events. */
-export async function disconnect() {
-  const t = readJSON(TOKEN_KEY);
-  localStorage.removeItem(TOKEN_KEY);
+/** Forget cached events (used when disconnecting Google). */
+export function clearCache() {
   localStorage.removeItem(CACHE_KEY);
-  if (t?.accessToken && isConfigured()) {
-    try {
-      await loadGis();
-      await new Promise((resolve) => window.google.accounts.oauth2.revoke(t.accessToken, () => resolve()));
-    } catch {
-      /* best effort — local data is already cleared */
-    }
-  }
+}
+
+/** Revoke Google access and clear the token + cached events. */
+export async function disconnect() {
+  clearCache();
+  await revokeAll();
 }

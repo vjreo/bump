@@ -13,7 +13,9 @@ import {
   CHECK_WITH_OB,
 } from './data/workouts.js';
 import * as calendar from './calendar.js';
-import { CALENDAR_TAG, CALENDAR_PAST_LIMIT } from './config.js';
+import * as notesDoc from './notesDoc.js';
+import { loadGis } from './google.js';
+import { CALENDAR_TAG, CALENDAR_PAST_LIMIT, NOTES_DOC_TITLE } from './config.js';
 import {
   todayNY,
   pregnancyWeek,
@@ -39,6 +41,9 @@ const PIN_ERROR = 'PIN should be at least 4 digits (numbers only)';
 const cal = { loading: false, error: '', needsReconnect: false, stale: false, pastOpen: false };
 // Open/closed state of the workout card's expandable sections (kept across re-renders)
 const workoutUi = { detailsOpen: false, stopOpen: false };
+// Shared notes (Google Doc) status for the Notes tab (notes themselves are cached by notesDoc.js)
+const notesUi = { loading: false, busy: '', error: '', offline: false, needsAuth: false, docError: '', docMsg: '' };
+const NOTE_AUTHOR_KEY = 'bump.noteAuthor.v1';
 const CAL_HELP = `Add ${CALENDAR_TAG} to an event title in your Google Calendar to show it here.`;
 
 store.load();
@@ -63,9 +68,49 @@ function render() {
       gateMode = store.isSetup() ? 'unlock' : 'setup';
     }
     renderGate();
+    bindDateFields(app);
     return;
   }
   renderApp(s);
+  bindDateFields(app);
+}
+
+/** "May 7, 2027" for a YYYY-MM-DD value. */
+function formatLongDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return '';
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' })
+    .format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
+}
+
+/**
+ * Date field: a styled "May 7, 2027" display with the real <input type="date"> laid invisibly on top,
+ * so a tap opens the phone's native picker. (iOS Safari draws date inputs its own way — centered
+ * text, its own height and gray styling — which clashed with the other fields.)
+ */
+function dateField(id, value, ariaLabel = '') {
+  return `
+    <div class="date-field">
+      <span class="date-display ${value ? '' : 'is-empty'}" aria-hidden="true">${escapeHtml(formatLongDate(value) || 'Choose a date')}</span>
+      <svg class="date-ico" aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <input class="date-input" type="date" id="${id}" value="${escapeHtml(value || '')}" ${ariaLabel ? `aria-label="${escapeHtml(ariaLabel)}"` : ''} />
+    </div>`;
+}
+
+function bindDateFields(root) {
+  root.querySelectorAll('.date-input').forEach((input) => {
+    const display = input.parentElement.querySelector('.date-display');
+    const sync = () => {
+      display.textContent = formatLongDate(input.value) || 'Choose a date';
+      display.classList.toggle('is-empty', !input.value);
+    };
+    input.addEventListener('input', sync);
+    input.addEventListener('change', sync);
+    // Desktop browsers only open the picker from their tiny icon; phones open it on tap anyway.
+    input.addEventListener('click', () => {
+      try { input.showPicker?.(); } catch { /* not allowed here; native behavior applies */ }
+    });
+  });
 }
 
 function renderGate() {
@@ -121,7 +166,7 @@ function renderGate() {
           <form id="setupForm" novalidate>
             <div class="field">
               <label class="label" for="dueDate">Due date</label>
-              <input class="input" type="date" id="dueDate" />
+              ${dateField('dueDate', '')}
             </div>
             <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
             <div class="field">
@@ -217,13 +262,19 @@ function renderApp(s) {
 
   app.querySelectorAll('.nav button').forEach((btn) => {
     btn.onclick = () => {
+      if (btn.dataset.tab === 'today' && tab === 'today') {
+        jumpTarget = null;
+        window.scrollTo({ top: 0, behavior: scrollBehavior() });
+        return;
+      }
       tab = btn.dataset.tab;
       render();
       // Opening Appts is a tap, so a token can be re-requested silently if needed
       if (tab === 'appointments' && calendar.isConnected()) syncCalendar({ interactive: true });
+      if (tab === 'notes' && notesDoc.isConnected()) syncNotes({ interactive: true });
     };
   });
-  if (calendar.isConfigured()) calendar.loadGis().catch(() => {}); // preload so sign-in opens from the tap
+  if (calendar.isConfigured()) loadGis().catch(() => {}); // preload so sign-in opens from the tap
 
   const main = app.querySelector('#main');
   if (tab === 'today') main.innerHTML = viewToday({ due, week, daysLeft, log });
@@ -245,10 +296,10 @@ function scrollWeekPickerToActive(root) {
   strip.scrollLeft += p.left - s.left - (s.width - p.width) / 2;
 }
 
-function weekCardHtml(content, { compact = false } = {}) {
+function weekCardHtml(content, { compact = false, id = '' } = {}) {
   if (!content) return '';
   return `
-    <article class="week-hero">
+    <article class="week-hero${id ? ' today-sec' : ''}"${id ? ` id="${id}"` : ''}>
       <p class="eyebrow">Week ${content.week}</p>
       <h2>${escapeHtml(content.title)}</h2>
       <p class="week-size">About the size of ${escapeHtml(content.size)}</p>
@@ -303,7 +354,7 @@ function workoutCard(week, log) {
     <h4 class="wo-section">${title}</h4>
     <ul class="wo-list">${moves.map(moveItem).join('')}</ul>`;
   return `
-    <div class="card workout-card">
+    <div class="card workout-card today-sec" id="sec-workout">
       <details class="wo-details" id="woDetails" ${workoutUi.detailsOpen ? 'open' : ''}>
         <summary>
           <div class="wo-head">
@@ -357,22 +408,34 @@ function viewToday({ due, week, daysLeft, log }) {
     return `<button type="button" class="${cls}" data-browse-week="${w}">${w}</button>`;
   }).join('');
 
+  const prep = getPrepForWeek(week);
+  const jumps = [
+    content && ['sec-week', 'Week'],
+    prep && ['sec-prep', 'Prep'],
+    ['sec-water', 'Hydration'],
+    ['sec-workout', 'Workout'],
+    ['sec-browse', 'Browse'],
+  ].filter(Boolean);
+
   return `
+    <nav class="jump-row" aria-label="Jump to a card">
+      ${jumps.map(([id, label]) => `<button type="button" class="jump" data-jump="${id}"><span>${label}</span></button>`).join('')}
+    </nav>
+
     <div class="progress-row">
       <div class="stat"><div class="n">${escapeHtml(trimesterForWeek(week)?.label ?? '—')}</div><div class="l">Trimester</div></div>
       <div class="stat"><div class="n">${escapeHtml(countdown.n)}</div><div class="l">${escapeHtml(countdown.l)}</div></div>
       <div class="stat"><div class="n">${escapeHtml(due ? formatMonthDay(due) : '—')}</div><div class="l">Due ${due ? due.slice(0, 4) : ''}</div></div>
     </div>
 
-    ${weekCardHtml(content)}
+    ${weekCardHtml(content, { id: 'sec-week' })}
 
     ${(() => {
-      const prep = getPrepForWeek(week);
       if (!prep) return '';
       const thisItems = prep.thisWeek.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
       const aheadItems = prep.lookingAhead.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
       return `
-    <div class="card prep-card">
+    <div class="card prep-card today-sec" id="sec-prep">
       <div class="card-head">
         <h3 class="card-title">🧺 Prepare this week</h3>
         <span class="chip">${escapeHtml(prep.bandTitle)}</span>
@@ -386,7 +449,7 @@ function viewToday({ due, week, daysLeft, log }) {
     </div>`;
     })()}
 
-    <div class="card">
+    <div class="card today-sec" id="sec-water">
       <div class="card-head">
         <h3 class="card-title">💧 Hydration</h3>
       </div>
@@ -405,7 +468,7 @@ function viewToday({ due, week, daysLeft, log }) {
 
     ${workoutCard(week, log)}
 
-    <div class="card">
+    <div class="card today-sec" id="sec-browse">
       <div class="card-head">
         <h3 class="card-title">📚 Browse by week</h3>
         ${browseWeek && browseWeek !== week ? '<button class="btn btn-ghost btn-sm" id="resetBrowse">Back to current</button>' : ''}
@@ -523,36 +586,112 @@ async function syncCalendar({ interactive = false, consent = false } = {}) {
   if (tab === 'appointments' || tab === 'settings') render();
 }
 
-function viewNotes() {
-  const notes = store.listNotes();
-  const items = notes.length
-    ? notes.map((n) => `
-        <div class="list-item">
-          <div class="meta">${escapeHtml(formatDisplayDateTime(n.createdAt))}${n.author ? ' · ' + escapeHtml(n.author) : ''}</div>
-          <p style="margin:6px 0 8px; white-space:pre-wrap">${escapeHtml(n.body)}</p>
-          <button class="btn btn-ghost btn-sm note-del" data-id="${n.id}">Delete</button>
-        </div>`).join('')
-    : '<div class="empty">Symptoms, questions for OB, grocery asks — shared here.</div>';
+async function syncNotes({ interactive = false } = {}) {
+  if (!notesDoc.isConfigured() || notesUi.loading) return;
+  if (!notesDoc.isConnected() && !interactive) return;
+  notesUi.loading = true;
+  notesUi.error = '';
+  if (tab === 'notes') render();
+  const res = await notesDoc.refresh({ interactive });
+  notesUi.loading = false;
+  notesUi.offline = Boolean(res.offline);
+  notesUi.needsAuth = Boolean(res.needsAuth);
+  notesUi.error = res.ok || res.offline || res.needsAuth ? '' : res.error || 'Could not reach Google Docs';
+  if (tab === 'notes' || tab === 'settings') render();
+}
 
+/** Run a doc change (add/delete/copy) with a busy label; refreshes the list on success. */
+async function notesAction(label, fn, onOk = () => {}) {
+  if (notesUi.busy) return false;
+  notesUi.busy = label;
+  notesUi.error = '';
+  render();
+  const res = await fn();
+  notesUi.busy = '';
+  notesUi.offline = Boolean(res.offline);
+  notesUi.needsAuth = Boolean(res.needsAuth);
+  if (res.ok) {
+    notesUi.needsAuth = false;
+    onOk();
+  }
+  notesUi.error = res.ok ? '' : res.offline ? 'You’re offline. Try again when you’re back online.' : res.error || 'Something went wrong';
+  render();
+  return res.ok;
+}
+
+function viewNotes() {
+  if (!notesDoc.isConfigured()) {
+    return `<div class="card"><div class="card-head"><h3 class="card-title">Shared notes</h3></div>
+      <div class="empty">Shared notes aren’t set up yet.</div></div>`;
+  }
+  const local = store.listNotes();
+  const connected = notesDoc.isConnected();
+  const { notes, fetchedAt, docId } = notesDoc.getCache();
+  const readOnly = !connected || notesUi.offline || notesUi.needsAuth;
+  const busy = Boolean(notesUi.busy);
+
+  if (!connected) {
+    return `
+    <div class="card">
+      <div class="card-head"><h3 class="card-title">Shared notes</h3></div>
+      <p class="meta" style="margin:0 0 12px">Notes are kept in a Google Doc called “${escapeHtml(NOTES_DOC_TITLE)}” in your Google Drive, so both phones see the same list. Bump can only open docs it creates.</p>
+      ${notesUi.error ? `<p class="err" style="margin:0 0 10px">${escapeHtml(notesUi.error)}</p>` : ''}
+      <button class="btn btn-primary" id="notesConnect" ${notesUi.loading ? 'disabled' : ''}>${notesUi.loading ? 'Connecting…' : 'Connect shared notes'}</button>
+      ${local.length ? `<p class="meta" style="margin:12px 0 0">${local.length} note${local.length === 1 ? ' is' : 's are'} saved only on this phone. After connecting, you can copy ${local.length === 1 ? 'it' : 'them'} to the shared doc.</p>` : ''}
+    </div>
+    ${notes.length ? notesListCard(notes, fetchedAt, docId, true) : ''}`;
+  }
+
+  let status = notesUi.loading ? 'Updating…' : fetchedAt ? `Last updated ${formatDisplayDateTime(fetchedAt)}` : 'Not updated yet';
+  const lastAuthor = localStorage.getItem(NOTE_AUTHOR_KEY) || '';
+  const authorOpt = (v, label) => `<option value="${v}" ${lastAuthor === v ? 'selected' : ''}>${label}</option>`;
   return `
+    ${notesUi.offline || notesUi.needsAuth ? `
+    <div class="cal-alert notes-alert">
+      <p>${notesUi.offline ? 'You’re offline. Showing notes saved on this phone (read-only).' : 'Couldn’t reach the shared notes doc. Showing saved notes (read-only).'}</p>
+      ${notesUi.needsAuth ? '<button class="btn btn-soft btn-sm" id="notesReconnect">Sign in again</button>' : ''}
+    </div>` : ''}
+    ${local.length && !readOnly ? `
+    <div class="card">
+      <div class="card-head"><h3 class="card-title">Notes on this phone</h3></div>
+      <p class="meta" style="margin:0 0 12px">${local.length} note${local.length === 1 ? ' is' : 's are'} saved only on this phone. Copy ${local.length === 1 ? 'it' : 'them'} to the shared doc once; after that, Bump uses only the shared doc.</p>
+      <button class="btn btn-sage btn-sm" id="notesMigrate" ${busy ? 'disabled' : ''}>${notesUi.busy === 'copy' ? 'Copying…' : 'Copy my phone’s notes to the shared doc'}</button>
+    </div>` : ''}
     <div class="card">
       <div class="card-head"><h3 class="card-title">New note</h3></div>
       <div class="field">
         <label class="label" for="noteBody">Note</label>
-        <textarea class="textarea" id="noteBody" placeholder="Symptom, question, reminder…"></textarea>
+        <textarea class="textarea" id="noteBody" placeholder="Symptom, question, reminder…" ${readOnly ? 'disabled' : ''}></textarea>
       </div>
       <div class="field">
-        <label class="label" for="noteAuthor">Who (optional)</label>
-        <select class="select" id="noteAuthor">
-          <option value="">Not set</option>
-          <option value="Vince">Vince</option>
-          <option value="Chantal">Chantal</option>
+        <label class="label" for="noteAuthor">Who</label>
+        <select class="select" id="noteAuthor" ${readOnly ? 'disabled' : ''}>
+          ${authorOpt('', 'Not set')}${authorOpt('Vince', 'Vince')}${authorOpt('Chantal', 'Chantal')}
         </select>
       </div>
-      <button class="btn btn-primary" id="noteAdd">Add note</button>
+      ${notesUi.error ? `<p class="err" style="margin:0 0 10px">${escapeHtml(notesUi.error)}</p>` : ''}
+      <button class="btn btn-primary" id="noteAdd" ${readOnly || busy ? 'disabled' : ''}>${notesUi.busy === 'add' ? 'Adding…' : 'Add note'}</button>
     </div>
+    ${notesListCard(notes, fetchedAt, docId, readOnly, status)}`;
+}
+
+function notesListCard(notes, fetchedAt, docId, readOnly, status = '') {
+  const items = notes.length
+    ? notes.map((n, i) => `
+        <div class="list-item">
+          <div class="meta">${escapeHtml(n.dateLabel)}${n.author ? ' · ' + escapeHtml(n.author) : ''}</div>
+          <p class="note-text">${escapeHtml(n.text)}</p>
+          ${readOnly ? '' : `<button class="btn btn-ghost btn-sm note-del" data-i="${i}" ${notesUi.busy ? 'disabled' : ''}>Delete</button>`}
+        </div>`).join('')
+    : '<div class="empty">Symptoms, questions for the OB, grocery asks — shared here.</div>';
+  return `
     <div class="card">
-      <div class="card-head"><h3 class="card-title">Shared notes</h3></div>
+      <div class="card-head">
+        <h3 class="card-title">Shared notes</h3>
+        ${readOnly ? '' : `<button class="btn btn-ghost btn-sm" id="notesRefresh" ${notesUi.loading ? 'disabled' : ''}>Refresh</button>`}
+      </div>
+      ${status ? `<p class="meta cal-status">${escapeHtml(status)}</p>` : fetchedAt ? `<p class="meta cal-status">Saved copy from ${escapeHtml(formatDisplayDateTime(fetchedAt))}</p>` : ''}
+      ${docId ? `<p class="notes-open"><a href="${escapeHtml(notesDoc.docUrl(docId))}" target="_blank" rel="noopener">Open in Google Docs ↗</a></p>` : ''}
       ${items}
     </div>`;
 }
@@ -562,7 +701,7 @@ function viewSettings(s) {
     <div class="card">
       <div class="card-head"><h3 class="card-title">Due date</h3></div>
       <div class="field">
-        <input class="input" type="date" id="setDue" value="${escapeHtml(s.household.dueDate || '')}" />
+        ${dateField('setDue', s.household.dueDate || '', 'Due date')}
       </div>
       <button class="btn btn-sage btn-sm" id="saveDue">Update due date</button>
     </div>
@@ -578,18 +717,11 @@ function viewSettings(s) {
     </div>
     <div class="card">
       <div class="card-head"><h3 class="card-title">Backup</h3></div>
-      <p class="meta" style="margin:0 0 12px">Save a copy of your due date, daily logs, and notes as a JSON file for safekeeping.</p>
+      <p class="meta" style="margin:0 0 12px">Save a copy of your due date and daily logs as a JSON file for safekeeping. Shared notes live in your Google Doc.</p>
       <button class="btn btn-primary btn-sm" id="doExport">Download a backup</button>
       <textarea class="textarea hidden" id="exportBox" style="margin-top:12px; min-height:120px" readonly></textarea>
     </div>
-    ${calendar.isConfigured() ? `
-    <div class="card">
-      <div class="card-head"><h3 class="card-title">Google Calendar</h3></div>
-      ${calendar.isConnected() ? `
-      <p class="meta" style="margin:0 0 12px">Connected (read-only). Bump shows only events with ${escapeHtml(CALENDAR_TAG)} in the title.</p>
-      <button class="btn btn-ghost btn-sm" id="calDisconnect">Disconnect</button>` : `
-      <p class="meta" style="margin:0">Not connected. Use <strong>Connect Google Calendar</strong> on the Appts tab.</p>`}
-    </div>` : ''}
+    ${calendar.isConfigured() ? googleSettingsCard() : ''}
     <div class="card">
       <div class="card-head"><h3 class="card-title">Session</h3></div>
       <div class="btn-row">
@@ -599,8 +731,94 @@ function viewSettings(s) {
     </div>`;
 }
 
+function googleSettingsCard() {
+  const calOn = calendar.isConnected();
+  const notesOn = notesDoc.isConnected();
+  const docId = notesDoc.getDocId();
+  return `
+    <div class="card">
+      <div class="card-head"><h3 class="card-title">Google account</h3></div>
+      <p class="meta" style="margin:0 0 4px"><strong>Calendar:</strong> ${calOn ? `connected (read-only), showing events with ${escapeHtml(CALENDAR_TAG)} in the title` : 'not connected. Use Connect on the Appts tab.'}</p>
+      <p class="meta" style="margin:0 0 12px"><strong>Shared notes:</strong> ${notesOn ? (docId ? `<a href="${escapeHtml(notesDoc.docUrl(docId))}" target="_blank" rel="noopener">${escapeHtml(NOTES_DOC_TITLE)} ↗</a>` : 'connected') : 'not connected. Use Connect on the Notes tab.'}</p>
+      ${notesOn ? `
+      <form id="docForm" novalidate>
+        <label class="label" for="docInput">Use a different notes doc</label>
+        <div class="field doc-field">
+          <input class="input" id="docInput" placeholder="Paste a Google Docs link or ID" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          <button class="btn btn-soft btn-sm" type="submit" ${notesUi.busy ? 'disabled' : ''}>${notesUi.busy === 'doc' ? 'Checking…' : 'Use doc'}</button>
+        </div>
+        ${notesUi.docError ? `<p class="err" style="margin:-8px 0 10px">${escapeHtml(notesUi.docError)}</p>` : ''}
+        ${notesUi.docMsg ? `<p class="meta" style="margin:-8px 0 10px">${escapeHtml(notesUi.docMsg)}</p>` : ''}
+        <p class="meta" style="margin:0 0 12px">Bump can only open docs it created itself (Google’s most limited Drive permission), such as a “${escapeHtml(NOTES_DOC_TITLE)}” doc made from the other phone.</p>
+      </form>` : ''}
+      ${calOn || notesOn ? '<button class="btn btn-ghost btn-sm" id="googleDisconnect">Disconnect Google</button>' : ''}
+    </div>`;
+}
+
+// ---------- Today shortcut chips ----------
+let jumpTarget = null; // chip just tapped: stays highlighted until the user scrolls by hand
+
+function scrollBehavior() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+}
+
+function setActiveJump(id) {
+  document.querySelectorAll('.jump').forEach((b) => {
+    const on = b.dataset.jump === id;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'true');
+    else b.removeAttribute('aria-current');
+    if (on) {
+      const row = b.parentElement;
+      const left = b.offsetLeft - row.offsetLeft;
+      if (left < row.scrollLeft || left + b.offsetWidth > row.scrollLeft + row.clientWidth) {
+        row.scrollTo({ left: left - 16, behavior: scrollBehavior() });
+      }
+    }
+  });
+}
+
+/** Highlight the chip for the card at the top of the screen (below the sticky chip row). */
+function updateActiveJump() {
+  if (tab !== 'today') return;
+  const row = document.querySelector('.jump-row');
+  if (!row) return;
+  if (jumpTarget) return setActiveJump(jumpTarget);
+  const line = row.getBoundingClientRect().bottom + 24;
+  const secs = [...document.querySelectorAll('.today-sec')];
+  let active = secs[0]?.id || null;
+  for (const el of secs) if (el.getBoundingClientRect().top <= line) active = el.id;
+  const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+  if (atBottom && secs.length) active = secs[secs.length - 1].id;
+  setActiveJump(active);
+}
+
+let jumpRaf = 0;
+window.addEventListener('scroll', () => {
+  if (tab !== 'today' || jumpRaf) return;
+  jumpRaf = requestAnimationFrame(() => { jumpRaf = 0; updateActiveJump(); });
+}, { passive: true });
+// A hand scroll ends the "just tapped" highlight (a programmatic smooth scroll doesn't).
+['touchstart', 'wheel', 'keydown'].forEach((type) =>
+  window.addEventListener(type, (e) => {
+    if (!jumpTarget || e.target.closest?.('.jump-row')) return;
+    jumpTarget = null;
+    updateActiveJump();
+  }, { passive: true })
+);
+
 function bindView(main) {
   if (tab === 'today') {
+    main.querySelectorAll('[data-jump]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.jump);
+        if (!target) return;
+        jumpTarget = btn.dataset.jump;
+        setActiveJump(btn.dataset.jump);
+        target.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+      });
+    });
+    updateActiveJump();
     main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.bumpHydration(1); render(); });
     main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.bumpHydration(-1); render(); });
     main.querySelector('#woDone')?.addEventListener('change', (e) => {
@@ -634,18 +852,27 @@ function bindView(main) {
   }
 
   if (tab === 'notes') {
-    main.querySelector('#noteAdd')?.addEventListener('click', () => {
-      const body = main.querySelector('#noteBody').value.trim();
-      if (!body) return;
-      store.addNote({ body, author: main.querySelector('#noteAuthor').value });
-      render();
+    main.querySelector('#notesConnect')?.addEventListener('click', () => syncNotes({ interactive: true }));
+    main.querySelector('#notesReconnect')?.addEventListener('click', () => syncNotes({ interactive: true }));
+    main.querySelector('#notesRefresh')?.addEventListener('click', () => syncNotes({ interactive: true }));
+    main.querySelector('#noteAuthor')?.addEventListener('change', (e) => localStorage.setItem(NOTE_AUTHOR_KEY, e.target.value));
+    main.querySelector('#noteAdd')?.addEventListener('click', async () => {
+      const bodyEl = main.querySelector('#noteBody');
+      const text = bodyEl.value.trim();
+      if (!text) return bodyEl.focus();
+      const author = main.querySelector('#noteAuthor').value;
+      notesUi.draft = text;
+      await notesAction('add', () => notesDoc.addNote({ text, author }), () => { notesUi.draft = ''; });
+    });
+    const bodyEl = main.querySelector('#noteBody');
+    if (bodyEl && notesUi.draft) bodyEl.value = notesUi.draft; // keep the text if adding failed
+    main.querySelector('#notesMigrate')?.addEventListener('click', async () => {
+      await notesAction('copy', () => notesDoc.copyLocalNotes(store.listNotes()), () => store.clearLocalNotes());
     });
     main.querySelectorAll('.note-del').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (confirm('Delete this note?')) {
-          store.deleteNote(btn.dataset.id);
-          render();
-        }
+        const note = notesDoc.getCache().notes[Number(btn.dataset.i)];
+        if (note && confirm('Delete this note from the shared doc?')) notesAction('delete', () => notesDoc.deleteNote(note.key));
       });
     });
   }
@@ -681,15 +908,32 @@ function bindView(main) {
       gateMode = 'unlock';
       render();
     });
-    main.querySelector('#calDisconnect')?.addEventListener('click', async () => {
-      if (!confirm('Disconnect Google Calendar? Saved events will be removed from this phone.')) return;
+    main.querySelector('#docForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = main.querySelector('#docInput').value;
+      notesUi.docError = '';
+      notesUi.docMsg = '';
+      if (notesUi.busy) return;
+      notesUi.busy = 'doc';
+      render();
+      const res = await notesDoc.useDoc(input);
+      notesUi.busy = '';
+      if (res.ok) notesUi.docMsg = 'Notes doc updated.';
+      else notesUi.docError = res.error || 'Could not open that doc';
+      render();
+    });
+    main.querySelector('#googleDisconnect')?.addEventListener('click', async () => {
+      if (!confirm('Disconnect Google? Saved calendar events and the saved copy of shared notes will be removed from this phone. The notes doc itself stays in Google Drive.')) return;
       await calendar.disconnect();
+      notesDoc.clearCache();
       Object.assign(cal, { loading: false, error: '', needsReconnect: false, stale: false });
+      Object.assign(notesUi, { loading: false, busy: '', error: '', offline: false, needsAuth: false, docError: '', docMsg: '' });
       render();
     });
     main.querySelector('#doReset')?.addEventListener('click', async () => {
       if (confirm('Erase all Bump data on this device?')) {
         await calendar.disconnect();
+        notesDoc.forgetDoc();
         Object.assign(cal, { loading: false, error: '', needsReconnect: false, stale: false });
         store.resetAll();
         gateMode = 'setup';
@@ -702,12 +946,16 @@ function bindView(main) {
 }
 
 // When the app comes back into view: redraw on a new day (e.g., left open past midnight)
-// and refresh calendar events on the Appts tab (using a still-valid token only).
+// and refresh calendar events / shared notes on their tabs (using a still-valid token only).
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (!store.isSetup() || !store.isUnlocked()) return;
   if (renderedAppDate && renderedAppDate !== todayNY()) render();
   if (tab === 'appointments') syncCalendar({ interactive: false });
+  if (tab === 'notes') syncNotes({ interactive: false });
+});
+window.addEventListener('online', () => {
+  if (tab === 'notes' && notesUi.offline) syncNotes({ interactive: false });
 });
 
 render();

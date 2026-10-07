@@ -8,13 +8,14 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 
 - **Invite-only gate** before create/unlock (shared invite code, separate from household PIN)
 - **Today** stat cards: **trimester** (1st = weeks 1–13, 2nd = 14–27, 3rd = 28+), days to due (or days past due), and due date — all computed in America/New_York
+- **Shortcut chips** under the header (Week, Prep, Hydration, Workout, Browse) stay pinned while you scroll, jump to each card, and highlight the card in view. Tapping **Today** again scrolls back to the top.
 - Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
 - **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
 - Hydration log
 - **Today’s workout + walk**: a short daily kettlebell + bodyweight session (10–15 min) plus a daily walk suggestion, picked from the date so both phones match, with separate Workout and Walk checks. See [Daily workout](#daily-workout).
 - **Appointments from Google Calendar** (read-only): only events with **[Bump]** in the title are shown (tag stripped). Upcoming ~6 months plus a collapsible list of recent past events; earlier ones grayed out, same-day ones tagged **Today**, day-before reminder for tomorrow’s. Last fetch is cached on the phone for offline viewing.
-- Shared notes
-- **Settings → Download a backup** saves a JSON copy of your data (due date, logs, notes; not the PIN or calendar events)
+- **Shared notes in a Google Doc** (“Bump Notes”) so both phones see the same list, newest first. Add a note (who + text), open the doc in Google Docs, or delete a note. The last copy is cached on the phone for offline reading (read-only). See [Shared notes](#shared-notes-google-doc).
+- **Settings → Download a backup** saves a JSON copy of your data (due date and daily logs; not the PIN, calendar events, or shared notes, which live in the Google Doc)
 
 ## Quick start
 
@@ -37,21 +38,36 @@ npm run preview
 1. Open the app → enter the **invite code** (ask Vince). It’s remembered on that phone afterward.
 2. **Create household** — set the **due date** + a shared **PIN** (at least 4 digits)
 3. You’re on **Today**
-4. **Appts → Connect Google Calendar** and sign in with the Google account that has the shared calendar. Add **[Bump]** to any event title you want to see in Bump.
-5. **Another phone:** enter the same invite code and create a household there. Notes and logs stay on each phone; appointments come from the shared Google Calendar on both.
+4. **Appts → Connect Google Calendar** (or **Notes → Connect shared notes**) and sign in with the shared Google account. One consent screen covers both calendar and notes. Add **[Bump]** to any event title you want to see in Bump.
+5. **Another phone:** enter the same invite code and create a household there. Daily logs stay on each phone; appointments and notes come from the shared Google account on both.
 
-> No Bump accounts or cloud sync. Data lives in each phone’s browser storage; use **Settings → Download a backup** to keep a copy.
+> No Bump accounts or Bump servers. Due date, PIN, and logs live in each phone’s browser storage; appointments and notes come straight from Google; use **Settings → Download a backup** to keep a copy.
 
-## Google Calendar setup
+## Google setup (Calendar + shared notes)
 
 Appointments are read in the browser with Google Identity Services (OAuth token flow, scope `calendar.events.readonly`) and the Calendar API `events.list` — no backend.
 
 - Set `VITE_GOOGLE_CLIENT_ID` in `.env.production` (and `.env` for local dev) to the OAuth **Web application** client ID, then rebuild and deploy. A web client ID is public by design. While it’s empty, the Appts tab shows “Calendar not set up yet.”
+- In the Google Cloud project, enable the **Google Calendar API**, **Google Drive API**, and **Google Docs API**, and add both scopes under **Google Auth Platform → Data Access**: `https://www.googleapis.com/auth/calendar.events.readonly` and `https://www.googleapis.com/auth/drive.file`.
 - The OAuth client needs these **Authorized JavaScript origins**: `https://vjreo.github.io` and `http://localhost:5173` (dev).
 - Calendar ID, tag, and fetch window live in `src/config.js` (`CALENDAR_ID` defaults to `primary`).
 - Access tokens last about an hour and are kept only on the phone. Opening the Appts tab or tapping **Refresh** gets a new one without a prompt when possible; otherwise tap **Reconnect**.
 - While the Google Cloud app is in **Testing** mode, each user’s authorization expires 7 days after consent, so expect to tap Reconnect and approve again about weekly.
-- **Settings → Disconnect** revokes access and clears saved events. You can also remove access at https://myaccount.google.com/permissions.
+- **Settings → Disconnect Google** revokes access and clears saved events and cached notes (the doc itself stays in Google Drive). You can also remove access at https://myaccount.google.com/permissions.
+
+## Shared notes (Google Doc)
+
+Notes are stored in a Google Doc in the shared account’s Drive, read and written in the browser with the Docs and Drive APIs — no backend.
+
+- **Scope:** `drive.file`, Google’s most limited Drive permission. Bump can only see files it created (or that were opened with it); it can’t browse the rest of Drive. Files created with one OAuth client are available to any phone signed in to the same account through the same Google Cloud project, which is why both phones see the same doc.
+- **First use:** Bump looks for a doc named **Bump Notes** that it created earlier (oldest wins if there are several) or creates one, then remembers its ID on the phone.
+- **Consent:** first sign-in from Appts or Notes asks for calendar + notes together. Phones that connected Calendar before shared notes existed get the extra permission when you tap **Notes → Connect shared notes** (incremental consent; calendar keeps working if you untick notes).
+- **Doc format:** each note is a bold date line (e.g. “Wed, Oct 7, 2026 at 6:30 PM — Chantal”) followed by the text, appended at the bottom. Entries typed by hand in the same format show up in the app too.
+- **Delete:** confirm, then Bump re-reads the doc and removes that entry. Edits use the doc’s revision ID, so two phones writing at once won’t overwrite each other (Bump retries once, or asks you to refresh).
+- **Offline:** shows the last copy saved on the phone, read-only.
+- **Settings → Use a different notes doc:** paste a doc link or ID. Because of `drive.file`, this only works for docs Bump created; an arbitrary existing doc would need the Google Picker or a broader scope.
+- **Migration:** notes saved on a phone before this feature show a one-time **Copy my phone’s notes to the shared doc** button (keeps original dates), then local notes are cleared.
+- **Limits:** if both phones connect for the very first time simultaneously, two docs could be created; Bump uses the oldest one, and you can delete the extra one in Drive.
 
 ## Invite gate (honest limits)
 
