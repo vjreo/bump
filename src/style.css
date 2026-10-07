@@ -164,14 +164,6 @@ a { color: var(--sage-deep); }
   display: grid; place-items: center;
 }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.btn-row-even > .btn { flex: 1 1 0; width: auto; }
-.btn-row-even > .btn:not(.btn-ghost) { border: 1.5px solid transparent; } /* match ghost border so widths line up */
-.import-confirm { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
-.linkish {
-  background: none; border: none; color: var(--sage-deep);
-  text-decoration: underline; text-underline-offset: 3px;
-  font-size: 0.9rem; padding: 8px 0; cursor: pointer; width: 100%; text-align: center;
-}
 .err { color: #a14432; font-size: 0.88rem; margin: 8px 0 0; }
 .hint { color: var(--ink-faint); font-size: 0.82rem; margin-top: 6px; }
 

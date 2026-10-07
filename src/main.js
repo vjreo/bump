@@ -21,11 +21,10 @@ const app = document.getElementById('app');
 
 let tab = 'today';
 let browseWeek = null;
-let gateMode = 'auto'; // auto | invite | unlock | setup | import
+let gateMode = 'auto'; // auto | invite | unlock | setup
 let renderedAppDate = null; // date the unlocked app was last drawn for (midnight refresh)
 const PIN_RULE = /^\d{4,}$/;
 const PIN_ERROR = 'PIN should be at least 4 digits (numbers only)';
-const IMPORT_CONFIRM = 'This replaces all Bump data on this phone (due date, PIN, logs, appointments, and notes) with the backup. Continue?';
 
 store.load();
 
@@ -95,58 +94,6 @@ function renderGate() {
     return;
   }
 
-  if (gateMode === 'import') {
-    app.innerHTML = `
-      <div class="gate">
-        <div class="gate-card">
-          <div class="brand">
-            <div class="brand-mark">🌱</div>
-            <h1>Import backup</h1>
-            <p>Paste a Bump JSON export from the other phone</p>
-          </div>
-          <form id="importForm" autocomplete="off">
-            <div class="field">
-              <label class="label" for="importText">Export JSON</label>
-              <textarea class="textarea" id="importText" placeholder='{ "app": "bump-tracker", ... }'></textarea>
-            </div>
-            ${setup ? `
-            <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
-            <div class="field">
-              <label class="label" for="importPin">Current PIN on this phone</label>
-              <input class="input" type="password" inputmode="numeric" id="importPin" autocomplete="current-password" />
-              <p class="hint">This phone already has Bump data. Importing replaces it.</p>
-            </div>` : ''}
-            <p class="err hidden" id="gateErr"></p>
-            <button class="btn btn-primary" type="submit">Import &amp; unlock</button>
-          </form>
-          <button class="linkish" id="backGate">Back</button>
-        </div>
-      </div>`;
-    app.querySelector('#importForm').onsubmit = (e) => {
-      e.preventDefault();
-      const err = app.querySelector('#gateErr');
-      const showErr = (msg) => { err.textContent = msg; err.classList.remove('hidden'); };
-      const text = app.querySelector('#importText').value;
-      if (!text.trim()) return showErr('Paste the backup JSON first');
-      if (setup) {
-        if (!store.verifyPin(app.querySelector('#importPin').value)) return showErr('Incorrect PIN');
-        if (!confirm(IMPORT_CONFIRM)) return;
-      }
-      try {
-        store.importJSON(text);
-        gateMode = 'auto';
-        render();
-      } catch (ex) {
-        showErr(ex.message || 'Could not import');
-      }
-    };
-    app.querySelector('#backGate').onclick = () => {
-      gateMode = setup ? 'unlock' : 'setup';
-      render();
-    };
-    return;
-  }
-
   if (gateMode === 'setup') {
     app.innerHTML = `
       <div class="gate">
@@ -165,7 +112,7 @@ function renderGate() {
             <div class="field">
               <label class="label" for="pin">Household PIN (at least 4 digits)</label>
               <input class="input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin" placeholder="Shared secret" autocomplete="new-password" />
-              <p class="hint">Same PIN on both phones. Data stays on this phone until you export/import.</p>
+              <p class="hint">You’ll use this PIN to unlock Bump. Your data stays on this phone.</p>
             </div>
             <div class="field">
               <label class="label" for="pin2">Confirm PIN</label>
@@ -174,7 +121,6 @@ function renderGate() {
             <p class="err hidden" id="gateErr"></p>
             <button class="btn btn-primary" type="submit">Create household</button>
           </form>
-          <button class="linkish" id="toImport">Have a backup JSON? Import instead</button>
         </div>
       </div>`;
     app.querySelector('#setupForm').onsubmit = (e) => {
@@ -191,7 +137,6 @@ function renderGate() {
       tab = 'today';
       render();
     };
-    app.querySelector('#toImport').onclick = () => { gateMode = 'import'; render(); };
     return;
   }
 
@@ -213,7 +158,6 @@ function renderGate() {
           <p class="err hidden" id="gateErr"></p>
           <button class="btn btn-primary" type="submit">Unlock</button>
         </form>
-        <button class="linkish" id="toImport">Import backup from other phone</button>
       </div>
     </div>`;
   const pinEl = app.querySelector('#pin');
@@ -229,7 +173,6 @@ function renderGate() {
       err.classList.remove('hidden');
     }
   };
-  app.querySelector('#toImport').onclick = () => { gateMode = 'import'; render(); };
 }
 
 function renderApp(s) {
@@ -529,26 +472,9 @@ function viewSettings(s) {
       </form>
     </div>
     <div class="card">
-      <div class="card-head"><h3 class="card-title">Move data between phones</h3></div>
-      <p class="meta" style="margin:0 0 12px">Your data stays on this phone. To copy it to the other phone, export it here and import it there.</p>
-      <div class="btn-row btn-row-even">
-        <button class="btn btn-primary btn-sm" id="doExport">Export JSON</button>
-        <button class="btn btn-ghost btn-sm" id="doImportFile">Import file</button>
-      </div>
-      <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
-      <form id="importConfirm" class="import-confirm hidden">
-        <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
-        <p class="meta" style="margin:0 0 8px" id="importFileName"></p>
-        <div class="field">
-          <label class="label" for="importPin">Current PIN to replace this phone’s data</label>
-          <input class="input" type="password" inputmode="numeric" id="importPin" autocomplete="current-password" />
-        </div>
-        <p class="err hidden" id="importErr"></p>
-        <div class="btn-row btn-row-even">
-          <button class="btn btn-danger btn-sm" type="submit">Replace data</button>
-          <button class="btn btn-ghost btn-sm" type="button" id="importCancel">Cancel</button>
-        </div>
-      </form>
+      <div class="card-head"><h3 class="card-title">Backup</h3></div>
+      <p class="meta" style="margin:0 0 12px">Save a copy of your due date, daily logs, appointments, and notes as a JSON file for safekeeping.</p>
+      <button class="btn btn-primary btn-sm" id="doExport">Download a backup</button>
       <textarea class="textarea hidden" id="exportBox" style="margin-top:12px; min-height:120px" readonly></textarea>
     </div>
     <div class="card">
@@ -652,52 +578,9 @@ function bindView(main) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bump-export-${todayNY()}.json`;
+      a.download = `bump-backup-${todayNY()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-    });
-    main.querySelector('#doImportFile')?.addEventListener('click', () => {
-      main.querySelector('#importFile').click();
-    });
-    let pendingImport = null;
-    const confirmForm = main.querySelector('#importConfirm');
-    const doImport = (text) => {
-      try {
-        store.importJSON(text);
-        alert('Import successful');
-        render();
-      } catch (err) {
-        alert(err.message || 'Import failed');
-      }
-    };
-    main.querySelector('#importFile')?.addEventListener('change', async (e) => {
-      const file = e.target.files?.[0];
-      e.target.value = '';
-      if (!file) return;
-      const text = await file.text();
-      if (!store.isSetup()) return doImport(text);
-      // Existing household: require the current PIN + confirmation before overwriting
-      pendingImport = text;
-      main.querySelector('#importFileName').textContent = `Selected: ${file.name}`;
-      main.querySelector('#importErr').classList.add('hidden');
-      confirmForm.classList.remove('hidden');
-      main.querySelector('#importPin').focus();
-    });
-    confirmForm?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const err = main.querySelector('#importErr');
-      if (!pendingImport) return;
-      if (!store.verifyPin(main.querySelector('#importPin').value)) {
-        err.textContent = 'Incorrect PIN';
-        err.classList.remove('hidden');
-        return;
-      }
-      if (!confirm(IMPORT_CONFIRM)) return;
-      doImport(pendingImport);
-    });
-    main.querySelector('#importCancel')?.addEventListener('click', () => {
-      pendingImport = null;
-      confirmForm.classList.add('hidden');
     });
     main.querySelector('#doLock')?.addEventListener('click', () => {
       store.lock();

@@ -13,7 +13,7 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - Hydration log, evening wind-down, daily gentle movement
 - Appointments: earlier ones grayed out, same-day ones tagged **Today**, day-before buffer reminder for tomorrow’s
 - Shared notes
-- Export / Import JSON to move data between phones manually (importing over existing data asks for the current PIN)
+- **Settings → Download a backup** saves a JSON copy of your data (due date, logs, appointments, notes; not the PIN)
 
 ## Quick start
 
@@ -36,10 +36,9 @@ npm run preview
 1. Open the app → enter the **invite code** (ask Vince). It’s remembered on that phone afterward.
 2. **Create household** — set the **due date** + a shared **PIN** (at least 4 digits)
 3. You’re on **Today**
-4. **Second phone:** enter the same invite code, then choose **Have a backup JSON? Import instead** and paste an export from the first phone (**Settings → Export JSON**). The import brings over the due date, PIN, and data, and unlocks the app. After that, unlock with the shared household PIN.
-5. **Later syncs:** export on one phone and use **Settings → Import file** on the other. Because that phone already has data, it asks for its current PIN and a confirmation before replacing anything.
+4. **Another phone:** enter the same invite code and create a household there. Each phone keeps its own data; nothing syncs between them.
 
-> No accounts or cloud sync. Export on phone A → share the file → Import on phone B.
+> No accounts or cloud sync. Data lives in each phone’s browser storage; use **Settings → Download a backup** to keep a copy.
 
 ## Invite gate (honest limits)
 

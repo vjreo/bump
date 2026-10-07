@@ -26,7 +26,7 @@ const BANDS = [
     thisWeek: [
       'Confirm first prenatal appointment is on the calendar',
       'Bring insurance card + questions list to the visit',
-      'Sync both phones: Settings → Export JSON, then import on the other phone',
+      'Start a shared list of questions for your OB or midwife in Notes',
     ],
     comingUp: [
       'Discuss nuchal / early screening if offered',

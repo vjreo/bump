@@ -1,6 +1,6 @@
 /**
  * Data layer — everything lives in localStorage on this device.
- * State: household, dailyLogs, appointments, notes (moved between phones via export/import).
+ * State: household, dailyLogs, appointments, notes. Settings can download a JSON backup.
  */
 import { todayNY } from './utils/dates.js';
 import { suggestionForDate } from './data/movements.js';
@@ -100,7 +100,7 @@ export function setupHousehold({ pin, dueDate }) {
 }
 
 /** True if pin matches the current household PIN (no state change). */
-export function verifyPin(pin) {
+function verifyPin(pin) {
   const s = getState();
   return Boolean(s.household?.pin) && String(pin ?? '').trim() === String(s.household.pin);
 }
@@ -225,35 +225,20 @@ export function deleteNote(id) {
   persist();
 }
 
-/** Export full household JSON for phone-to-phone sync */
+/** JSON backup of household data for safekeeping (excludes the PIN and unlock flag). */
 export function exportJSON() {
   const s = getState();
+  const { pin, ...household } = s.household;
   const payload = {
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     app: 'bump-tracker',
-    household: { ...s.household },
+    household,
     dailyLogs: s.dailyLogs,
     appointments: s.appointments,
     notes: s.notes,
   };
-  // Don't export unlocked flag
   return JSON.stringify(payload, null, 2);
-}
-
-export function importJSON(text) {
-  const data = JSON.parse(text);
-  if (!data || !data.household) throw new Error('Invalid bump export');
-  const s = getState();
-  s.schemaVersion = data.schemaVersion || SCHEMA_VERSION;
-  s.household = { ...data.household, id: data.household.id || s.household.id };
-  s.dailyLogs = data.dailyLogs || {};
-  s.appointments = data.appointments || [];
-  s.notes = data.notes || [];
-  s.unlocked = true;
-  ensureDaily(s);
-  persist();
-  return s;
 }
 
 export function resetAll() {
