@@ -3,7 +3,7 @@ import * as store from './store.js';
 import { isInviteOk, tryInvite } from './invite.js';
 import { getWeekContent } from './data/weeks.js';
 import { getPrepForWeek } from './data/prep.js';
-import { suggestionForDate, randomSuggestion } from './data/movements.js';
+import { randomSuggestion } from './data/movements.js';
 import {
   todayNY,
   pregnancyWeek,
@@ -11,6 +11,7 @@ import {
   daysUntilDue,
   formatDisplayDate,
   formatDisplayDateTime,
+  formatMonthDay,
   formatNYDate,
   addDays,
 } from './utils/dates.js';
@@ -21,6 +22,10 @@ const app = document.getElementById('app');
 let tab = 'today';
 let browseWeek = null;
 let gateMode = 'auto'; // auto | invite | unlock | setup | import
+let renderedAppDate = null; // date the unlocked app was last drawn for (midnight refresh)
+const PIN_RULE = /^\d{4,}$/;
+const PIN_ERROR = 'PIN should be at least 4 digits (numbers only)';
+const IMPORT_CONFIRM = 'This replaces all Bump data on this phone (due date, PIN, logs, appointments, and notes) with the backup. Continue?';
 
 store.load();
 
@@ -99,24 +104,40 @@ function renderGate() {
             <h1>Import backup</h1>
             <p>Paste a Bump JSON export from the other phone</p>
           </div>
-          <div class="field">
-            <label class="label" for="importText">Export JSON</label>
-            <textarea class="textarea" id="importText" placeholder='{ "app": "bump-tracker", ... }'></textarea>
-          </div>
-          <p class="err hidden" id="gateErr"></p>
-          <button class="btn btn-primary" id="doImport">Import &amp; unlock</button>
+          <form id="importForm" autocomplete="off">
+            <div class="field">
+              <label class="label" for="importText">Export JSON</label>
+              <textarea class="textarea" id="importText" placeholder='{ "app": "bump-tracker", ... }'></textarea>
+            </div>
+            ${setup ? `
+            <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
+            <div class="field">
+              <label class="label" for="importPin">Current PIN on this phone</label>
+              <input class="input" type="password" inputmode="numeric" id="importPin" autocomplete="current-password" />
+              <p class="hint">This phone already has Bump data. Importing replaces it.</p>
+            </div>` : ''}
+            <p class="err hidden" id="gateErr"></p>
+            <button class="btn btn-primary" type="submit">Import &amp; unlock</button>
+          </form>
           <button class="linkish" id="backGate">Back</button>
         </div>
       </div>`;
-    app.querySelector('#doImport').onclick = () => {
+    app.querySelector('#importForm').onsubmit = (e) => {
+      e.preventDefault();
+      const err = app.querySelector('#gateErr');
+      const showErr = (msg) => { err.textContent = msg; err.classList.remove('hidden'); };
+      const text = app.querySelector('#importText').value;
+      if (!text.trim()) return showErr('Paste the backup JSON first');
+      if (setup) {
+        if (!store.verifyPin(app.querySelector('#importPin').value)) return showErr('Incorrect PIN');
+        if (!confirm(IMPORT_CONFIRM)) return;
+      }
       try {
-        store.importJSON(app.querySelector('#importText').value);
+        store.importJSON(text);
         gateMode = 'auto';
         render();
-      } catch (e) {
-        const err = app.querySelector('#gateErr');
-        err.textContent = e.message || 'Could not import';
-        err.classList.remove('hidden');
+      } catch (ex) {
+        showErr(ex.message || 'Could not import');
       }
     };
     app.querySelector('#backGate').onclick = () => {
@@ -135,31 +156,35 @@ function renderGate() {
             <h1>Bump</h1>
             <p>Vince &amp; Chantal’s shared pregnancy tracker</p>
           </div>
-          <div class="field">
-            <label class="label" for="dueDate">Due date</label>
-            <input class="input" type="date" id="dueDate" />
-          </div>
-          <div class="field">
-            <label class="label" for="pin">Household PIN (4+ digits)</label>
-            <input class="input" type="password" inputmode="numeric" id="pin" placeholder="Shared secret" autocomplete="new-password" />
-            <p class="hint">Same PIN on both phones. Data stays on-device until you export/import.</p>
-          </div>
-          <div class="field">
-            <label class="label" for="pin2">Confirm PIN</label>
-            <input class="input" type="password" inputmode="numeric" id="pin2" autocomplete="new-password" />
-          </div>
-          <p class="err hidden" id="gateErr"></p>
-          <button class="btn btn-primary" id="doSetup">Create household</button>
+          <form id="setupForm" novalidate>
+            <div class="field">
+              <label class="label" for="dueDate">Due date</label>
+              <input class="input" type="date" id="dueDate" />
+            </div>
+            <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
+            <div class="field">
+              <label class="label" for="pin">Household PIN (at least 4 digits)</label>
+              <input class="input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin" placeholder="Shared secret" autocomplete="new-password" />
+              <p class="hint">Same PIN on both phones. Data stays on this phone until you export/import.</p>
+            </div>
+            <div class="field">
+              <label class="label" for="pin2">Confirm PIN</label>
+              <input class="input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin2" autocomplete="new-password" />
+            </div>
+            <p class="err hidden" id="gateErr"></p>
+            <button class="btn btn-primary" type="submit">Create household</button>
+          </form>
           <button class="linkish" id="toImport">Have a backup JSON? Import instead</button>
         </div>
       </div>`;
-    app.querySelector('#doSetup').onclick = () => {
+    app.querySelector('#setupForm').onsubmit = (e) => {
+      e.preventDefault();
       const dueDate = app.querySelector('#dueDate').value;
       const pin = app.querySelector('#pin').value.trim();
       const pin2 = app.querySelector('#pin2').value.trim();
       const err = app.querySelector('#gateErr');
       if (!dueDate) { err.textContent = 'Pick a due date'; err.classList.remove('hidden'); return; }
-      if (pin.length < 4) { err.textContent = 'PIN should be at least 4 characters'; err.classList.remove('hidden'); return; }
+      if (!PIN_RULE.test(pin)) { err.textContent = PIN_ERROR; err.classList.remove('hidden'); return; }
       if (pin !== pin2) { err.textContent = 'PINs do not match'; err.classList.remove('hidden'); return; }
       store.setupHousehold({ pin, dueDate });
       gateMode = 'auto';
@@ -179,18 +204,22 @@ function renderGate() {
           <h1>Welcome back</h1>
           <p>Enter your household PIN</p>
         </div>
-        <div class="field">
-          <label class="label" for="pin">PIN</label>
-          <input class="input" type="password" inputmode="numeric" id="pin" autocomplete="current-password" />
-        </div>
-        <p class="err hidden" id="gateErr"></p>
-        <button class="btn btn-primary" id="doUnlock">Unlock</button>
+        <form id="unlockForm">
+          <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
+          <div class="field">
+            <label class="label" for="pin">PIN</label>
+            <input class="input" type="password" inputmode="numeric" id="pin" autocomplete="current-password" />
+          </div>
+          <p class="err hidden" id="gateErr"></p>
+          <button class="btn btn-primary" type="submit">Unlock</button>
+        </form>
         <button class="linkish" id="toImport">Import backup from other phone</button>
       </div>
     </div>`;
   const pinEl = app.querySelector('#pin');
   pinEl.focus();
-  const tryUnlock = () => {
+  app.querySelector('#unlockForm').onsubmit = (e) => {
+    e.preventDefault();
     if (store.unlock(pinEl.value)) {
       gateMode = 'auto';
       render();
@@ -200,8 +229,6 @@ function renderGate() {
       err.classList.remove('hidden');
     }
   };
-  app.querySelector('#doUnlock').onclick = tryUnlock;
-  pinEl.onkeydown = (e) => { if (e.key === 'Enter') tryUnlock(); };
   app.querySelector('#toImport').onclick = () => { gateMode = 'import'; render(); };
 }
 
@@ -211,13 +238,14 @@ function renderApp(s) {
   const daysLeft = daysUntilDue(due);
   const log = store.getTodayLog();
   const today = todayNY();
+  renderedAppDate = today;
 
   app.innerHTML = `
     <div class="app-shell">
       <header class="topbar">
         <div>
           <h1>Bump</h1>
-          <div class="sub">${escapeHtml(formatDisplayDate(today))} · America/New_York</div>
+          <div class="sub">${escapeHtml(formatDisplayDate(today))}</div>
         </div>
       </header>
       <main id="main"></main>
@@ -234,12 +262,23 @@ function renderApp(s) {
   });
 
   const main = app.querySelector('#main');
-  if (tab === 'today') main.innerHTML = viewToday({ due, week, daysLeft, log, today });
+  if (tab === 'today') main.innerHTML = viewToday({ due, week, daysLeft, log });
   else if (tab === 'appointments') main.innerHTML = viewAppointments();
   else if (tab === 'notes') main.innerHTML = viewNotes();
   else main.innerHTML = viewSettings(s);
 
-  bindView(main, { due, week, daysLeft, log, today });
+  bindView(main);
+  if (tab === 'today') scrollWeekPickerToActive(main);
+}
+
+/** Center the selected (or current) week pill in the horizontal week strip. */
+function scrollWeekPickerToActive(root) {
+  const strip = root.querySelector('.week-browser');
+  const pill = strip?.querySelector('.week-pill.active') || strip?.querySelector('.week-pill.current');
+  if (!strip || !pill) return;
+  const s = strip.getBoundingClientRect();
+  const p = pill.getBoundingClientRect();
+  strip.scrollLeft += p.left - s.left - (s.width - p.width) / 2;
 }
 
 function weekCardHtml(content, { compact = false } = {}) {
@@ -264,16 +303,24 @@ function weekCardHtml(content, { compact = false } = {}) {
       <p class="week-attrib">
         Inspired by the
         <a href="${escapeHtml(content.nhsUrl)}" target="_blank" rel="noopener noreferrer">NHS Best Start in Life week-by-week guide</a>
-        (Week ${content.week}). Original summary — not medical advice.
+        (${content.nhsWeek === content.week ? `Week ${content.week}` : `closest NHS page: Week ${content.nhsWeek}`}). Original summary — not medical advice.
         ${compact ? '' : 'Talk to your midwife or OB about anything that worries you.'}
       </p>
     </article>`;
 }
 
-function viewToday({ due, week, daysLeft, log, today }) {
+function dueCountdown(daysLeft) {
+  if (daysLeft == null) return { n: '—', l: 'Days to due' };
+  if (daysLeft > 0) return { n: daysLeft, l: 'Days to due' };
+  if (daysLeft === 0) return { n: 0, l: 'Due today' };
+  return { n: Math.abs(daysLeft), l: 'Days past due' };
+}
+
+function viewToday({ due, week, daysLeft, log }) {
   const content = getWeekContent(week);
   const shownWeek = browseWeek ?? week;
   const browseContent = getWeekContent(shownWeek);
+  const countdown = dueCountdown(daysLeft);
   const glasses = Array.from({ length: HYDRATION_GOAL }, (_, i) =>
     `<div class="glass ${i < log.hydrationCount ? 'on' : ''}" aria-hidden="true"></div>`
   ).join('');
@@ -290,8 +337,8 @@ function viewToday({ due, week, daysLeft, log, today }) {
   return `
     <div class="progress-row">
       <div class="stat"><div class="n">${escapeHtml(trimesterForWeek(week)?.label ?? '—')}</div><div class="l">Trimester</div></div>
-      <div class="stat"><div class="n">${daysLeft ?? '—'}</div><div class="l">Days to due</div></div>
-      <div class="stat"><div class="n">${escapeHtml(due ? due.slice(5) : '—')}</div><div class="l">Due ${due ? due.slice(0, 4) : ''}</div></div>
+      <div class="stat"><div class="n">${escapeHtml(countdown.n)}</div><div class="l">${escapeHtml(countdown.l)}</div></div>
+      <div class="stat"><div class="n">${escapeHtml(due ? formatMonthDay(due) : '—')}</div><div class="l">Due ${due ? due.slice(0, 4) : ''}</div></div>
     </div>
 
     ${weekCardHtml(content)}
@@ -300,7 +347,7 @@ function viewToday({ due, week, daysLeft, log, today }) {
       const prep = getPrepForWeek(week);
       if (!prep) return '';
       const thisItems = prep.thisWeek.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
-      const upItems = prep.comingUp.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+      const aheadItems = prep.lookingAhead.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
       return `
     <div class="card prep-card">
       <div class="card-head">
@@ -309,8 +356,8 @@ function viewToday({ due, week, daysLeft, log, today }) {
       </div>
       <ul class="prep-list">${thisItems}</ul>
       <div class="prep-coming">
-        <h4 class="prep-coming-title">${escapeHtml(prep.comingLabel)}</h4>
-        <ul class="prep-list muted">${upItems}</ul>
+        <h4 class="prep-coming-title">Looking ahead</h4>
+        <ul class="prep-list muted">${aheadItems}</ul>
       </div>
       <p class="disclaimer">Practical household reminders — not medical advice. Follow your OB or midwife’s plan.</p>
     </div>`;
@@ -319,12 +366,11 @@ function viewToday({ due, week, daysLeft, log, today }) {
     <div class="card">
       <div class="card-head">
         <h3 class="card-title">💧 Hydration</h3>
-        <span class="chip">${log.hydrationCount} / ${HYDRATION_GOAL}</span>
       </div>
       <div class="hydro">
         <div>
           <div class="hydro-count">${log.hydrationCount}</div>
-          <div class="meta">glasses today</div>
+          <div class="meta">of ${HYDRATION_GOAL} glasses today</div>
         </div>
         <div class="btn-row">
           <button class="btn-icon" id="hydroMinus" aria-label="Remove glass">−</button>
@@ -350,7 +396,6 @@ function viewToday({ due, week, daysLeft, log, today }) {
     <div class="card">
       <div class="card-head">
         <h3 class="card-title">🚶 Daily movement</h3>
-        <span class="chip">${escapeHtml(log.movementType || 'move')}</span>
       </div>
       <div class="movement-type">${escapeHtml(log.movementType || '')}</div>
       <div class="movement-title">${escapeHtml(log.movementSuggestion || '')}</div>
@@ -361,7 +406,7 @@ function viewToday({ due, week, daysLeft, log, today }) {
         </button>
         <button class="btn btn-ghost btn-sm" id="moveRegen">Another idea</button>
       </div>
-      <p class="disclaimer">Gentle suggestions only — complementary to gym, not a workout plan. Skip anything that doesn’t feel right; check with your care team if unsure.</p>
+      <p class="disclaimer">Gentle suggestions only — not a workout plan. Skip anything that doesn’t feel right; check with your care team if unsure.</p>
     </div>
 
     <div class="card">
@@ -379,20 +424,23 @@ function viewToday({ due, week, daysLeft, log, today }) {
 
 function viewAppointments() {
   const list = store.listAppointments();
+  const now = Date.now();
   const today = todayNY();
   const tomorrow = addDays(today, 1);
 
   const items = list.length
     ? list.map((a) => {
-        const day = formatNYDate(new Date(a.startsAt));
-        const isBuffer = day === tomorrow || day === today;
-        const past = day < today;
+        const start = new Date(a.startsAt);
+        const day = formatNYDate(start);
+        const past = start.getTime() < now;
+        const isToday = !past && day === today;
+        const isTomorrow = !past && day === tomorrow;
         return `
-          <div class="list-item" data-appt="${a.id}">
-            <h4 style="${past ? 'opacity:0.55' : ''}">${escapeHtml(a.title)}</h4>
+          <div class="list-item${past ? ' is-past' : ''}" data-appt="${a.id}">
+            <h4>${escapeHtml(a.title)}${isToday ? ' <span class="chip chip-today">Today</span>' : ''}</h4>
             <div class="meta">${escapeHtml(formatDisplayDateTime(a.startsAt))}${a.location ? ' · ' + escapeHtml(a.location) : ''}</div>
             ${a.notes ? `<div class="meta" style="margin-top:4px">${escapeHtml(a.notes)}</div>` : ''}
-            ${isBuffer && !past ? '<div class="buffer-flag">Day-before buffer — prep paperwork / plan travel</div>' : ''}
+            ${isTomorrow ? '<div class="buffer-flag">Day-before buffer — prep paperwork / plan travel</div>' : ''}
             <div class="btn-row" style="margin-top:8px">
               <button class="btn btn-ghost btn-sm appt-del" data-id="${a.id}">Remove</button>
             </div>
@@ -448,7 +496,7 @@ function viewNotes() {
       <div class="field">
         <label class="label" for="noteAuthor">Who (optional)</label>
         <select class="select" id="noteAuthor">
-          <option value="">Either</option>
+          <option value="">Not set</option>
           <option value="Vince">Vince</option>
           <option value="Chantal">Chantal</option>
         </select>
@@ -472,19 +520,35 @@ function viewSettings(s) {
     </div>
     <div class="card">
       <div class="card-head"><h3 class="card-title">Household PIN</h3></div>
-      <div class="field">
-        <input class="input" type="password" inputmode="numeric" id="setPin" placeholder="New PIN" />
-      </div>
-      <button class="btn btn-soft btn-sm" id="savePin">Change PIN</button>
+      <form id="pinForm" novalidate>
+        <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
+        <div class="field">
+          <input class="input" type="password" inputmode="numeric" pattern="[0-9]*" id="setPin" placeholder="New PIN (at least 4 digits)" autocomplete="new-password" />
+        </div>
+        <button class="btn btn-soft btn-sm" type="submit">Change PIN</button>
+      </form>
     </div>
     <div class="card">
-      <div class="card-head"><h3 class="card-title">Sync between phones</h3></div>
-      <p class="meta" style="margin:0 0 12px">Export JSON on one phone, import on the other. Cloud sync (Supabase) can be wired later — data shape is ready.</p>
-      <div class="btn-row">
+      <div class="card-head"><h3 class="card-title">Move data between phones</h3></div>
+      <p class="meta" style="margin:0 0 12px">Your data stays on this phone. To copy it to the other phone, export it here and import it there.</p>
+      <div class="btn-row btn-row-even">
         <button class="btn btn-primary btn-sm" id="doExport">Export JSON</button>
         <button class="btn btn-ghost btn-sm" id="doImportFile">Import file</button>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" class="hidden" />
+      <form id="importConfirm" class="import-confirm hidden">
+        <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
+        <p class="meta" style="margin:0 0 8px" id="importFileName"></p>
+        <div class="field">
+          <label class="label" for="importPin">Current PIN to replace this phone’s data</label>
+          <input class="input" type="password" inputmode="numeric" id="importPin" autocomplete="current-password" />
+        </div>
+        <p class="err hidden" id="importErr"></p>
+        <div class="btn-row btn-row-even">
+          <button class="btn btn-danger btn-sm" type="submit">Replace data</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="importCancel">Cancel</button>
+        </div>
+      </form>
       <textarea class="textarea hidden" id="exportBox" style="margin-top:12px; min-height:120px" readonly></textarea>
     </div>
     <div class="card">
@@ -493,11 +557,10 @@ function viewSettings(s) {
         <button class="btn btn-ghost btn-sm" id="doLock">Lock</button>
         <button class="btn btn-danger btn-sm" id="doReset">Reset all data</button>
       </div>
-    </div>
-    <p class="disclaimer">localStorage-first · schema ready for Supabase households / daily_logs / appointments / notes</p>`;
+    </div>`;
 }
 
-function bindView(main, ctx) {
+function bindView(main) {
   if (tab === 'today') {
     main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.bumpHydration(1); render(); });
     main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.bumpHydration(-1); render(); });
@@ -559,8 +622,10 @@ function bindView(main, ctx) {
     });
     main.querySelectorAll('.note-del').forEach((btn) => {
       btn.addEventListener('click', () => {
-        store.deleteNote(btn.dataset.id);
-        render();
+        if (confirm('Delete this note?')) {
+          store.deleteNote(btn.dataset.id);
+          render();
+        }
       });
     });
   }
@@ -570,9 +635,10 @@ function bindView(main, ctx) {
       const v = main.querySelector('#setDue').value;
       if (v) { store.setDueDate(v); browseWeek = null; render(); }
     });
-    main.querySelector('#savePin')?.addEventListener('click', () => {
+    main.querySelector('#pinForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
       const v = main.querySelector('#setPin').value.trim();
-      if (v.length < 4) return alert('PIN should be at least 4 characters');
+      if (!PIN_RULE.test(v)) return alert(PIN_ERROR);
       store.setPin(v);
       alert('PIN updated');
       render();
@@ -593,16 +659,45 @@ function bindView(main, ctx) {
     main.querySelector('#doImportFile')?.addEventListener('click', () => {
       main.querySelector('#importFile').click();
     });
-    main.querySelector('#importFile')?.addEventListener('change', async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+    let pendingImport = null;
+    const confirmForm = main.querySelector('#importConfirm');
+    const doImport = (text) => {
       try {
-        store.importJSON(await file.text());
+        store.importJSON(text);
         alert('Import successful');
         render();
       } catch (err) {
         alert(err.message || 'Import failed');
       }
+    };
+    main.querySelector('#importFile')?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      const text = await file.text();
+      if (!store.isSetup()) return doImport(text);
+      // Existing household: require the current PIN + confirmation before overwriting
+      pendingImport = text;
+      main.querySelector('#importFileName').textContent = `Selected: ${file.name}`;
+      main.querySelector('#importErr').classList.add('hidden');
+      confirmForm.classList.remove('hidden');
+      main.querySelector('#importPin').focus();
+    });
+    confirmForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const err = main.querySelector('#importErr');
+      if (!pendingImport) return;
+      if (!store.verifyPin(main.querySelector('#importPin').value)) {
+        err.textContent = 'Incorrect PIN';
+        err.classList.remove('hidden');
+        return;
+      }
+      if (!confirm(IMPORT_CONFIRM)) return;
+      doImport(pendingImport);
+    });
+    main.querySelector('#importCancel')?.addEventListener('click', () => {
+      pendingImport = null;
+      confirmForm.classList.add('hidden');
     });
     main.querySelector('#doLock')?.addEventListener('click', () => {
       store.lock();
@@ -621,8 +716,12 @@ function bindView(main, ctx) {
   }
 }
 
-// Online/offline hint in console; viewing works offline via localStorage
-window.addEventListener('online', () => console.info('[bump] online — ready for future sync'));
-window.addEventListener('offline', () => console.info('[bump] offline — local data still available'));
+// Redraw when the app comes back into view on a new day (e.g., left open past midnight)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (renderedAppDate && renderedAppDate !== todayNY() && store.isSetup() && store.isUnlocked()) {
+    render();
+  }
+});
 
 render();

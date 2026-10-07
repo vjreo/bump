@@ -31,14 +31,6 @@ export function rememberInviteOk() {
   }
 }
 
-export function clearInviteOk() {
-  try {
-    localStorage.removeItem(FLAG_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
 /** Normalize invite for hashing: trim + lowercase */
 export function normalizeInvite(code) {
   return String(code ?? '').trim().toLowerCase();
@@ -61,8 +53,4 @@ export async function tryInvite(code) {
     return true;
   }
   return false;
-}
-
-export function hasInviteConfigured() {
-  return Boolean(INVITE_HASH);
 }

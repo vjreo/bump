@@ -26,7 +26,7 @@ const BANDS = [
     thisWeek: [
       'Confirm first prenatal appointment is on the calendar',
       'Bring insurance card + questions list to the visit',
-      'Share the household PIN export path with your partner',
+      'Sync both phones: Settings → Export JSON, then import on the other phone',
     ],
     comingUp: [
       'Discuss nuchal / early screening if offered',
@@ -124,16 +124,11 @@ const BANDS = [
 export function getPrepForWeek(week) {
   if (week == null || Number.isNaN(week)) return null;
   const w = Math.min(42, Math.max(1, Math.round(week)));
-  const band = BANDS.find((b) => w >= b.from && w <= b.to) || BANDS[BANDS.length - 1];
-  const idx = BANDS.indexOf(band);
-  const next = BANDS[idx + 1] || null;
+  const band = BANDS.find((b) => w >= b.from && w <= b.to);
   return {
     week: w,
     bandTitle: band.title,
     thisWeek: band.thisWeek,
-    comingUp: next
-      ? next.thisWeek.slice(0, 3)
-      : band.comingUp,
-    comingLabel: next ? `Coming up (weeks ${next.from}–${next.to})` : 'Coming up',
+    lookingAhead: band.comingUp,
   };
 }

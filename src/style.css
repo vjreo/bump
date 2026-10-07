@@ -164,6 +164,9 @@ a { color: var(--sage-deep); }
   display: grid; place-items: center;
 }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row-even > .btn { flex: 1 1 0; width: auto; }
+.btn-row-even > .btn:not(.btn-ghost) { border: 1.5px solid transparent; } /* match ghost border so widths line up */
+.import-confirm { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .linkish {
   background: none; border: none; color: var(--sage-deep);
   text-decoration: underline; text-underline-offset: 3px;
@@ -221,7 +224,7 @@ a { color: var(--sage-deep); }
   background: var(--sage-mist);
   color: var(--sage-deep);
 }
-.chip-warn { background: #f5e8c8; color: #7a5c1e; }
+.chip-today { background: #f0ddd3; color: var(--clay-deep); margin-left: 6px; vertical-align: 2px; }
 
 /* Week hero — NHS-style sections */
 .week-hero {
@@ -376,6 +379,7 @@ a { color: var(--sage-deep); }
 }
 .list-item:last-child { border-bottom: none; }
 .list-item h4 { margin: 0 0 4px; font-size: 1rem; }
+.list-item.is-past h4, .list-item.is-past .meta { opacity: 0.55; }
 .meta { color: var(--ink-muted); font-size: 0.85rem; }
 .buffer-flag {
   display: inline-block;
@@ -461,10 +465,6 @@ a { color: var(--sage-deep); }
 }
 
 .hidden { display: none !important; }
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0,0,0,0); border: 0;
-}
 
 @media (min-width: 480px) {
   .app-shell { padding-top: 24px; }

@@ -7,13 +7,13 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 ## Features
 
 - **Invite-only gate** before create/unlock (shared invite code, separate from household PIN)
-- Due date + pregnancy week counter (America/New_York)
-- Week-by-week card (NHS Best Start–inspired structure; original summaries + link out)
+- **Today** stat cards: **trimester** (1st = weeks 1–13, 2nd = 14–27, 3rd = 28+), days to due (or days past due), and due date — all computed in America/New_York
+- Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
+- **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
 - Hydration log, evening wind-down, daily gentle movement
-- Appointments with day-before buffer flag
+- Appointments: earlier ones grayed out, same-day ones tagged **Today**, day-before buffer reminder for tomorrow’s
 - Shared notes
-- Export / Import JSON to sync phones manually
-- **Prepare this week / Coming up** — practical prep checklist from due-date week
+- Export / Import JSON to move data between phones manually (importing over existing data asks for the current PIN)
 
 ## Quick start
 
@@ -33,10 +33,11 @@ npm run preview
 
 ## First-run
 
-1. Open the app → enter the **invite code** (ask Vince)
-2. **Create household** — set **due date** + shared **PIN** (4+ characters)
+1. Open the app → enter the **invite code** (ask Vince). It’s remembered on that phone afterward.
+2. **Create household** — set the **due date** + a shared **PIN** (at least 4 digits)
 3. You’re on **Today**
-4. Other phone: same invite once (remembered in localStorage), then unlock with the household PIN after **Settings → Export JSON** / **Import**, or **Import backup** on the gate screen
+4. **Second phone:** enter the same invite code, then choose **Have a backup JSON? Import instead** and paste an export from the first phone (**Settings → Export JSON**). The import brings over the due date, PIN, and data, and unlocks the app. After that, unlock with the shared household PIN.
+5. **Later syncs:** export on one phone and use **Settings → Import file** on the other. Because that phone already has data, it asks for its current PIN and a confirmation before replacing anything.
 
 > No accounts or cloud sync. Export on phone A → share the file → Import on phone B.
 
@@ -58,4 +59,26 @@ Original short summaries structured like the [NHS Best Start in Life week-by-wee
 
 ## Hosting
 
-GitHub Pages from the `gh-pages` branch (`base: /bump/`). Source lives on `main`.
+GitHub Pages from the `gh-pages` branch (`base: /bump/`). Source lives on `main`. There’s no Actions workflow (the deploy token lacks the workflow scope), so deploys are manual:
+
+```bash
+# 1. Commit and push source
+git push origin main
+
+# 2. Build (needs VITE_INVITE_HASH in .env — see Quick start)
+npm run build
+
+# 3. Publish dist/ to gh-pages via a temporary worktree
+git worktree add /tmp/bump-gh-pages gh-pages
+cd /tmp/bump-gh-pages
+git pull --ff-only origin gh-pages
+git rm -rq .
+cp -r /path/to/bump-tracker/dist/. .
+touch .nojekyll
+git add -A
+git commit -m "Deploy <main sha>"
+git push origin gh-pages
+cd - && git worktree remove /tmp/bump-gh-pages
+```
+
+Pages usually updates within a minute. Check https://vjreo.github.io/bump/?cb=123 (any query string busts the cache) and confirm `index.html` references the new `assets/index-*.js`.

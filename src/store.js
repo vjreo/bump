@@ -1,7 +1,6 @@
 /**
- * Data layer — localStorage first.
- * Shape mirrors planned Supabase tables so we can swap adapters later:
- *   households, daily_logs, appointments, notes
+ * Data layer — everything lives in localStorage on this device.
+ * State: household, dailyLogs, appointments, notes (moved between phones via export/import).
  */
 import { todayNY } from './utils/dates.js';
 import { suggestionForDate } from './data/movements.js';
@@ -18,7 +17,7 @@ function emptyState() {
     schemaVersion: SCHEMA_VERSION,
     household: {
       id: uid(),
-      pin: null, // shared household PIN (plaintext locally; hash when Supabase lands)
+      pin: null, // shared household PIN (stored in plaintext locally)
       dueDate: null,
       createdAt: new Date().toISOString(),
       names: { partnerA: 'Vince', partnerB: 'Chantal' },
@@ -48,7 +47,6 @@ function ensureDaily(state, date = todayNY()) {
 }
 
 let state = null;
-const listeners = new Set();
 
 function persist() {
   state.updatedAt = new Date().toISOString();
@@ -57,7 +55,6 @@ function persist() {
   } catch (e) {
     console.warn('persist failed', e);
   }
-  listeners.forEach((fn) => fn(state));
 }
 
 export function load() {
@@ -82,11 +79,6 @@ export function getState() {
   return state;
 }
 
-export function subscribe(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
 export function isSetup() {
   const s = getState();
   return Boolean(s.household?.pin && s.household?.dueDate);
@@ -107,9 +99,15 @@ export function setupHousehold({ pin, dueDate }) {
   return s;
 }
 
+/** True if pin matches the current household PIN (no state change). */
+export function verifyPin(pin) {
+  const s = getState();
+  return Boolean(s.household?.pin) && String(pin ?? '').trim() === String(s.household.pin);
+}
+
 export function unlock(pin) {
   const s = getState();
-  if (String(pin).trim() === String(s.household.pin)) {
+  if (verifyPin(pin)) {
     s.unlocked = true;
     ensureDaily(s);
     persist();
@@ -196,15 +194,6 @@ export function addAppointment({ title, startsAt, location = '', notes = '' }) {
   return appt;
 }
 
-export function updateAppointment(id, patch) {
-  const s = getState();
-  const i = s.appointments.findIndex((a) => a.id === id);
-  if (i < 0) return null;
-  s.appointments[i] = { ...s.appointments[i], ...patch };
-  persist();
-  return s.appointments[i];
-}
-
 export function deleteAppointment(id) {
   const s = getState();
   s.appointments = s.appointments.filter((a) => a.id !== id);
@@ -272,11 +261,3 @@ export function resetAll() {
   state = emptyState();
   persist();
 }
-
-// Future Supabase adapter hook (no-op for now)
-export const remote = {
-  enabled: false,
-  async sync() {
-    return { ok: false, reason: 'localStorage-only until Supabase project available' };
-  },
-};

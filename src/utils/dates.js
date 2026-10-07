@@ -31,6 +31,17 @@ export function formatDisplayDate(isoDate) {
   }).format(dt);
 }
 
+/** "May 7" style label for a YYYY-MM-DD date. */
+export function formatMonthDay(isoDate) {
+  if (!isoDate) return '';
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(Date.UTC(y, m - 1, d, 12)));
+}
+
 export function formatDisplayDateTime(iso) {
   if (!iso) return '';
   return new Intl.DateTimeFormat('en-US', {
@@ -86,5 +97,3 @@ export function addDays(isoDate, n) {
   const dt = new Date(Date.UTC(y, m - 1, d + n));
   return dt.toISOString().slice(0, 10);
 }
-
-export { TZ };

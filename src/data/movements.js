@@ -1,4 +1,4 @@
-/** Gentle daily movement suggestions — complementary to gym, pregnancy-safe tone. */
+/** Gentle daily movement suggestions — pregnancy-safe tone, not a workout plan. */
 
 export const MOVEMENTS = [
   { type: 'walk', title: 'Neighborhood stroll', detail: '10–15 minutes at an easy pace. Fresh air counts.' },
