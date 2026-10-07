@@ -221,7 +221,6 @@ a { color: var(--sage-deep); }
   background: var(--sage-mist);
   color: var(--sage-deep);
 }
-.chip-clay { background: #f0ddd3; color: var(--clay-deep); }
 .chip-warn { background: #f5e8c8; color: #7a5c1e; }
 
 /* Week hero — NHS-style sections */

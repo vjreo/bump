@@ -64,6 +64,18 @@ export function pregnancyWeek(dueDate, onDate = todayNY()) {
   return Math.min(42, Math.max(1, week));
 }
 
+/**
+ * Trimester from pregnancy week (standard boundaries):
+ * 1st = weeks 1–13, 2nd = weeks 14–27, 3rd = week 28+.
+ */
+export function trimesterForWeek(week) {
+  if (week == null || Number.isNaN(Number(week))) return null;
+  const w = Number(week);
+  if (w <= 13) return { number: 1, label: '1st' };
+  if (w <= 27) return { number: 2, label: '2nd' };
+  return { number: 3, label: '3rd' };
+}
+
 export function daysUntilDue(dueDate, onDate = todayNY()) {
   if (!dueDate) return null;
   return daysBetween(dueDate, onDate);

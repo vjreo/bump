@@ -7,6 +7,7 @@ import { suggestionForDate, randomSuggestion } from './data/movements.js';
 import {
   todayNY,
   pregnancyWeek,
+  trimesterForWeek,
   daysUntilDue,
   formatDisplayDate,
   formatDisplayDateTime,
@@ -218,7 +219,6 @@ function renderApp(s) {
           <h1>Bump</h1>
           <div class="sub">${escapeHtml(formatDisplayDate(today))} · America/New_York</div>
         </div>
-        <span class="chip chip-clay">Week ${week ?? '—'}</span>
       </header>
       <main id="main"></main>
       <nav class="nav" aria-label="Main">
@@ -289,7 +289,7 @@ function viewToday({ due, week, daysLeft, log, today }) {
 
   return `
     <div class="progress-row">
-      <div class="stat"><div class="n">${week ?? '—'}</div><div class="l">Week</div></div>
+      <div class="stat"><div class="n">${escapeHtml(trimesterForWeek(week)?.label ?? '—')}</div><div class="l">Trimester</div></div>
       <div class="stat"><div class="n">${daysLeft ?? '—'}</div><div class="l">Days to due</div></div>
       <div class="stat"><div class="n">${escapeHtml(due ? due.slice(5) : '—')}</div><div class="l">Due ${due ? due.slice(0, 4) : ''}</div></div>
     </div>
@@ -373,7 +373,7 @@ function viewToday({ due, week, daysLeft, log, today }) {
       ${browseWeek && browseWeek !== week ? weekCardHtml(browseContent, { compact: true }) : '<p class="meta">Tap a week to peek ahead or look back. Current week is outlined in sage.</p>'}
     </div>
 
-    <p class="disclaimer">Bump is a shared household helper, not medical advice. For health questions, talk to your OB, midwife, or GP.</p>
+    <p class="disclaimer">Bump is a shared household helper, not medical advice. For health questions, talk to your OB, midwife, or doctor.</p>
   `;
 }
 
