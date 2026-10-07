@@ -4,6 +4,8 @@ import { isInviteOk, tryInvite } from './invite.js';
 import { getWeekContent } from './data/weeks.js';
 import { getPrepForWeek } from './data/prep.js';
 import { randomSuggestion } from './data/movements.js';
+import * as calendar from './calendar.js';
+import { CALENDAR_TAG, CALENDAR_PAST_LIMIT } from './config.js';
 import {
   todayNY,
   pregnancyWeek,
@@ -25,6 +27,9 @@ let gateMode = 'auto'; // auto | invite | unlock | setup
 let renderedAppDate = null; // date the unlocked app was last drawn for (midnight refresh)
 const PIN_RULE = /^\d{4,}$/;
 const PIN_ERROR = 'PIN should be at least 4 digits (numbers only)';
+// Google Calendar sync status for the Appts tab (events themselves are cached by calendar.js)
+const cal = { loading: false, error: '', needsReconnect: false, stale: false, pastOpen: false };
+const CAL_HELP = `Add ${CALENDAR_TAG} to an event title in your Google Calendar to show it here.`;
 
 store.load();
 
@@ -201,8 +206,14 @@ function renderApp(s) {
     </div>`;
 
   app.querySelectorAll('.nav button').forEach((btn) => {
-    btn.onclick = () => { tab = btn.dataset.tab; render(); };
+    btn.onclick = () => {
+      tab = btn.dataset.tab;
+      render();
+      // Opening Appts is a tap, so a token can be re-requested silently if needed
+      if (tab === 'appointments' && calendar.isConnected()) syncCalendar({ interactive: true });
+    };
   });
+  if (calendar.isConfigured()) calendar.loadGis().catch(() => {}); // preload so sign-in opens from the tap
 
   const main = app.querySelector('#main');
   if (tab === 'today') main.innerHTML = viewToday({ due, week, daysLeft, log });
@@ -365,57 +376,109 @@ function viewToday({ due, week, daysLeft, log }) {
   `;
 }
 
+/**
+ * Classify a cached calendar event relative to now (America/New_York days).
+ * past = already ended; onToday = falls on today; isToday = "Today" tag; isTomorrow = day-before reminder.
+ */
+function eventTiming(ev, now, today, tomorrow) {
+  if (ev.allDay) {
+    const past = ev.end <= today; // all-day end date is exclusive
+    return { past, onToday: !past && ev.start <= today, isToday: !past && ev.start <= today, isTomorrow: !past && ev.start === tomorrow };
+  }
+  const day = formatNYDate(new Date(ev.start));
+  const past = Date.parse(ev.end || ev.start) < now;
+  return { past, onToday: day === today, isToday: !past && day <= today, isTomorrow: !past && day === tomorrow };
+}
+
+function eventItemHtml(ev, t) {
+  const when = ev.allDay
+    ? `${formatDisplayDate(ev.start)} · All day`
+    : formatDisplayDateTime(ev.start);
+  return `
+    <div class="list-item${t.past ? ' is-past' : ''}">
+      <h4>${escapeHtml(ev.title)}${t.isToday ? ' <span class="chip chip-today">Today</span>' : ''}</h4>
+      <div class="meta">${escapeHtml(when)}${ev.location ? ' · ' + escapeHtml(ev.location) : ''}</div>
+      ${t.isTomorrow ? '<div class="buffer-flag">Day-before buffer — prep paperwork / plan travel</div>' : ''}
+    </div>`;
+}
+
 function viewAppointments() {
-  const list = store.listAppointments();
+  if (!calendar.isConfigured()) {
+    return `
+      <div class="card">
+        <div class="card-head"><h3 class="card-title">📅 Appointments</h3></div>
+        <p class="cal-lead">Calendar not set up yet</p>
+        <p class="meta">Appointments will come from Google Calendar once it’s connected. ${escapeHtml(CAL_HELP)}</p>
+      </div>`;
+  }
+
+  if (!calendar.isConnected()) {
+    return `
+      <div class="card">
+        <div class="card-head"><h3 class="card-title">📅 Appointments</h3></div>
+        <p class="meta" style="margin:0 0 12px">Show events from your Google Calendar here (read-only). ${escapeHtml(CAL_HELP)}</p>
+        ${cal.error ? `<p class="err" style="margin:0 0 10px">${escapeHtml(cal.error)}</p>` : ''}
+        <button class="btn btn-primary" id="calConnect" ${cal.loading ? 'disabled' : ''}>${cal.loading ? 'Connecting…' : 'Connect Google Calendar'}</button>
+      </div>`;
+  }
+
+  const { events, fetchedAt } = calendar.getCache();
   const now = Date.now();
   const today = todayNY();
   const tomorrow = addDays(today, 1);
+  const timed = events.map((ev) => ({ ev, t: eventTiming(ev, now, today, tomorrow) }));
+  // Upcoming keeps all of today's events (earlier ones grayed); older ones go to the Past list
+  const upcoming = timed.filter((x) => !x.t.past || x.t.onToday).sort((a, b) => (a.ev.start < b.ev.start ? -1 : 1));
+  const past = timed.filter((x) => x.t.past && !x.t.onToday).sort((a, b) => (a.ev.start < b.ev.start ? 1 : -1)).slice(0, CALENDAR_PAST_LIMIT);
 
-  const items = list.length
-    ? list.map((a) => {
-        const start = new Date(a.startsAt);
-        const day = formatNYDate(start);
-        const past = start.getTime() < now;
-        const isToday = !past && day === today;
-        const isTomorrow = !past && day === tomorrow;
-        return `
-          <div class="list-item${past ? ' is-past' : ''}" data-appt="${a.id}">
-            <h4>${escapeHtml(a.title)}${isToday ? ' <span class="chip chip-today">Today</span>' : ''}</h4>
-            <div class="meta">${escapeHtml(formatDisplayDateTime(a.startsAt))}${a.location ? ' · ' + escapeHtml(a.location) : ''}</div>
-            ${a.notes ? `<div class="meta" style="margin-top:4px">${escapeHtml(a.notes)}</div>` : ''}
-            ${isTomorrow ? '<div class="buffer-flag">Day-before buffer — prep paperwork / plan travel</div>' : ''}
-            <div class="btn-row" style="margin-top:8px">
-              <button class="btn btn-ghost btn-sm appt-del" data-id="${a.id}">Remove</button>
-            </div>
-          </div>`;
-      }).join('')
-    : '<div class="empty">No appointments yet. Add OB visits, paperwork deadlines, or classes.</div>';
+  let status;
+  if (cal.loading) status = 'Updating…';
+  else status = fetchedAt ? `Last updated ${formatDisplayDateTime(fetchedAt)}` : 'Not updated yet';
 
   return `
     <div class="card">
-      <div class="card-head"><h3 class="card-title">Add appointment</h3></div>
-      <div class="field">
-        <label class="label" for="apptTitle">Title</label>
-        <input class="input" id="apptTitle" placeholder="OB checkup, anatomy scan…" />
+      <div class="card-head">
+        <h3 class="card-title">📅 Upcoming</h3>
+        <button class="btn btn-ghost btn-sm" id="calRefresh" ${cal.loading ? 'disabled' : ''}>Refresh</button>
       </div>
-      <div class="field">
-        <label class="label" for="apptWhen">Date &amp; time</label>
-        <input class="input" type="datetime-local" id="apptWhen" />
-      </div>
-      <div class="field">
-        <label class="label" for="apptLoc">Location (optional)</label>
-        <input class="input" id="apptLoc" placeholder="Clinic name" />
-      </div>
-      <div class="field">
-        <label class="label" for="apptNotes">Notes / paperwork</label>
-        <input class="input" id="apptNotes" placeholder="Insurance card, questions…" />
-      </div>
-      <button class="btn btn-primary" id="apptAdd">Save appointment</button>
+      <p class="meta cal-status">${escapeHtml(status)}${cal.stale && !cal.loading ? ' · Tap Refresh to update' : ''}</p>
+      ${cal.needsReconnect && !cal.loading ? `
+        <div class="cal-alert">
+          <p>Couldn’t refresh from Google Calendar${cal.error ? ` (${escapeHtml(cal.error)})` : ''}. Showing saved events.</p>
+          <button class="btn btn-soft btn-sm" id="calReconnect">Reconnect</button>
+        </div>` : cal.error && !cal.loading ? `<p class="err" style="margin:0 0 8px">${escapeHtml(cal.error)}</p>` : ''}
+      ${upcoming.length
+        ? upcoming.map((x) => eventItemHtml(x.ev, x.t)).join('')
+        : `<div class="empty">No upcoming ${escapeHtml(CALENDAR_TAG)} events. ${escapeHtml(CAL_HELP)}</div>`}
+      ${past.length ? `
+        <details class="past-list" id="calPast" ${cal.pastOpen ? 'open' : ''}>
+          <summary>Past (${past.length})</summary>
+          ${past.map((x) => eventItemHtml(x.ev, x.t)).join('')}
+        </details>` : ''}
     </div>
-    <div class="card">
-      <div class="card-head"><h3 class="card-title">Upcoming &amp; past</h3></div>
-      ${items}
-    </div>`;
+    ${upcoming.length ? `<p class="disclaimer">${escapeHtml(CAL_HELP)}</p>` : ''}`;
+}
+
+/** Fetch tagged events and redraw the Appts tab when done. */
+async function syncCalendar({ interactive = false, consent = false } = {}) {
+  if (!calendar.isConfigured() || cal.loading) return;
+  if (!calendar.isConnected() && !interactive) return;
+  cal.loading = true;
+  cal.error = '';
+  if (tab === 'appointments') render();
+  const res = await calendar.refresh({ interactive, consent });
+  cal.loading = false;
+  if (res.ok) {
+    cal.needsReconnect = false;
+    cal.stale = false;
+    cal.error = '';
+  } else if (res.needsReconnect && !interactive) {
+    cal.stale = true; // token expired while in the background; keep showing the cache
+  } else {
+    cal.needsReconnect = Boolean(res.needsReconnect) && calendar.isConnected();
+    cal.error = res.error || 'Could not reach Google Calendar';
+  }
+  if (tab === 'appointments' || tab === 'settings') render();
 }
 
 function viewNotes() {
@@ -473,10 +536,18 @@ function viewSettings(s) {
     </div>
     <div class="card">
       <div class="card-head"><h3 class="card-title">Backup</h3></div>
-      <p class="meta" style="margin:0 0 12px">Save a copy of your due date, daily logs, appointments, and notes as a JSON file for safekeeping.</p>
+      <p class="meta" style="margin:0 0 12px">Save a copy of your due date, daily logs, and notes as a JSON file for safekeeping.</p>
       <button class="btn btn-primary btn-sm" id="doExport">Download a backup</button>
       <textarea class="textarea hidden" id="exportBox" style="margin-top:12px; min-height:120px" readonly></textarea>
     </div>
+    ${calendar.isConfigured() ? `
+    <div class="card">
+      <div class="card-head"><h3 class="card-title">Google Calendar</h3></div>
+      ${calendar.isConnected() ? `
+      <p class="meta" style="margin:0 0 12px">Connected (read-only). Bump shows only events with ${escapeHtml(CALENDAR_TAG)} in the title.</p>
+      <button class="btn btn-ghost btn-sm" id="calDisconnect">Disconnect</button>` : `
+      <p class="meta" style="margin:0">Not connected. Use <strong>Connect Google Calendar</strong> on the Appts tab.</p>`}
+    </div>` : ''}
     <div class="card">
       <div class="card-head"><h3 class="card-title">Session</h3></div>
       <div class="btn-row">
@@ -517,26 +588,10 @@ function bindView(main) {
   }
 
   if (tab === 'appointments') {
-    main.querySelector('#apptAdd')?.addEventListener('click', () => {
-      const title = main.querySelector('#apptTitle').value.trim();
-      const when = main.querySelector('#apptWhen').value;
-      if (!title || !when) return alert('Title and date/time are required');
-      store.addAppointment({
-        title,
-        startsAt: new Date(when).toISOString(),
-        location: main.querySelector('#apptLoc').value,
-        notes: main.querySelector('#apptNotes').value,
-      });
-      render();
-    });
-    main.querySelectorAll('.appt-del').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (confirm('Remove this appointment?')) {
-          store.deleteAppointment(btn.dataset.id);
-          render();
-        }
-      });
-    });
+    main.querySelector('#calConnect')?.addEventListener('click', () => syncCalendar({ interactive: true }));
+    main.querySelector('#calRefresh')?.addEventListener('click', () => syncCalendar({ interactive: true }));
+    main.querySelector('#calReconnect')?.addEventListener('click', () => syncCalendar({ interactive: true, consent: true }));
+    main.querySelector('#calPast')?.addEventListener('toggle', (e) => { cal.pastOpen = e.target.open; });
   }
 
   if (tab === 'notes') {
@@ -587,8 +642,16 @@ function bindView(main) {
       gateMode = 'unlock';
       render();
     });
-    main.querySelector('#doReset')?.addEventListener('click', () => {
+    main.querySelector('#calDisconnect')?.addEventListener('click', async () => {
+      if (!confirm('Disconnect Google Calendar? Saved events will be removed from this phone.')) return;
+      await calendar.disconnect();
+      Object.assign(cal, { loading: false, error: '', needsReconnect: false, stale: false });
+      render();
+    });
+    main.querySelector('#doReset')?.addEventListener('click', async () => {
       if (confirm('Erase all Bump data on this device?')) {
+        await calendar.disconnect();
+        Object.assign(cal, { loading: false, error: '', needsReconnect: false, stale: false });
         store.resetAll();
         gateMode = 'setup';
         tab = 'today';
@@ -599,12 +662,13 @@ function bindView(main) {
   }
 }
 
-// Redraw when the app comes back into view on a new day (e.g., left open past midnight)
+// When the app comes back into view: redraw on a new day (e.g., left open past midnight)
+// and refresh calendar events on the Appts tab (using a still-valid token only).
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  if (renderedAppDate && renderedAppDate !== todayNY() && store.isSetup() && store.isUnlocked()) {
-    render();
-  }
+  if (!store.isSetup() || !store.isUnlocked()) return;
+  if (renderedAppDate && renderedAppDate !== todayNY()) render();
+  if (tab === 'appointments') syncCalendar({ interactive: false });
 });
 
 render();

@@ -40,7 +40,7 @@ const BANDS = [
     thisWeek: [
       'Keep prenatal vitamins going',
       'Comfortable shoes + light daily walk if energy allows',
-      'Add any follow-up labs to Appointments',
+      'Add follow-up labs to Google Calendar with [Bump] in the title',
     ],
     comingUp: [
       'Anatomy scan usually booked ~18–22 weeks',

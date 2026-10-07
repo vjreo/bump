@@ -11,9 +11,9 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
 - **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
 - Hydration log, evening wind-down, daily gentle movement
-- Appointments: earlier ones grayed out, same-day ones tagged **Today**, day-before buffer reminder for tomorrow’s
+- **Appointments from Google Calendar** (read-only): only events with **[Bump]** in the title are shown (tag stripped). Upcoming ~6 months plus a collapsible list of recent past events; earlier ones grayed out, same-day ones tagged **Today**, day-before reminder for tomorrow’s. Last fetch is cached on the phone for offline viewing.
 - Shared notes
-- **Settings → Download a backup** saves a JSON copy of your data (due date, logs, appointments, notes; not the PIN)
+- **Settings → Download a backup** saves a JSON copy of your data (due date, logs, notes; not the PIN or calendar events)
 
 ## Quick start
 
@@ -36,9 +36,21 @@ npm run preview
 1. Open the app → enter the **invite code** (ask Vince). It’s remembered on that phone afterward.
 2. **Create household** — set the **due date** + a shared **PIN** (at least 4 digits)
 3. You’re on **Today**
-4. **Another phone:** enter the same invite code and create a household there. Each phone keeps its own data; nothing syncs between them.
+4. **Appts → Connect Google Calendar** and sign in with the Google account that has the shared calendar. Add **[Bump]** to any event title you want to see in Bump.
+5. **Another phone:** enter the same invite code and create a household there. Notes and logs stay on each phone; appointments come from the shared Google Calendar on both.
 
-> No accounts or cloud sync. Data lives in each phone’s browser storage; use **Settings → Download a backup** to keep a copy.
+> No Bump accounts or cloud sync. Data lives in each phone’s browser storage; use **Settings → Download a backup** to keep a copy.
+
+## Google Calendar setup
+
+Appointments are read in the browser with Google Identity Services (OAuth token flow, scope `calendar.events.readonly`) and the Calendar API `events.list` — no backend.
+
+- Set `VITE_GOOGLE_CLIENT_ID` in `.env.production` (and `.env` for local dev) to the OAuth **Web application** client ID, then rebuild and deploy. A web client ID is public by design. While it’s empty, the Appts tab shows “Calendar not set up yet.”
+- The OAuth client needs these **Authorized JavaScript origins**: `https://vjreo.github.io` and `http://localhost:5173` (dev).
+- Calendar ID, tag, and fetch window live in `src/config.js` (`CALENDAR_ID` defaults to `primary`).
+- Access tokens last about an hour and are kept only on the phone. Opening the Appts tab or tapping **Refresh** gets a new one without a prompt when possible; otherwise tap **Reconnect**.
+- While the Google Cloud app is in **Testing** mode, each user’s authorization expires 7 days after consent, so expect to tap Reconnect and approve again about weekly.
+- **Settings → Disconnect** revokes access and clears saved events. You can also remove access at https://myaccount.google.com/permissions.
 
 ## Invite gate (honest limits)
 

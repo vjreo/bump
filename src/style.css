@@ -372,6 +372,15 @@ a { color: var(--sage-deep); }
 .list-item:last-child { border-bottom: none; }
 .list-item h4 { margin: 0 0 4px; font-size: 1rem; }
 .list-item.is-past h4, .list-item.is-past .meta { opacity: 0.55; }
+.cal-lead { font-weight: 650; margin: 0 0 6px; }
+.cal-status { margin: -4px 0 8px; font-size: 0.8rem; }
+.cal-alert {
+  background: #f5e8c8; color: #7a5c1e; border-radius: 12px;
+  padding: 10px 12px; margin: 0 0 10px; font-size: 0.85rem;
+}
+.cal-alert p { margin: 0 0 8px; }
+.past-list { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.past-list summary { cursor: pointer; font-weight: 650; font-size: 0.85rem; color: var(--ink-muted); padding: 6px 0; }
 .meta { color: var(--ink-muted); font-size: 0.85rem; }
 .buffer-flag {
   display: inline-block;

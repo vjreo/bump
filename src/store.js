@@ -1,6 +1,8 @@
 /**
  * Data layer — everything lives in localStorage on this device.
- * State: household, dailyLogs, appointments, notes. Settings can download a JSON backup.
+ * State: household, dailyLogs, notes. Settings can download a JSON backup.
+ * (Appointments now come from Google Calendar — see calendar.js. Older stored
+ * manual appointments are left untouched in storage but no longer used or exported.)
  */
 import { todayNY } from './utils/dates.js';
 import { suggestionForDate } from './data/movements.js';
@@ -23,7 +25,6 @@ function emptyState() {
       names: { partnerA: 'Vince', partnerB: 'Chantal' },
     },
     dailyLogs: {}, // keyed by YYYY-MM-DD
-    appointments: [],
     notes: [],
     unlocked: false,
     updatedAt: new Date().toISOString(),
@@ -173,33 +174,6 @@ export function setMovementSuggestion(sug) {
   return log;
 }
 
-export function listAppointments() {
-  return [...getState().appointments].sort(
-    (a, b) => new Date(a.startsAt) - new Date(b.startsAt)
-  );
-}
-
-export function addAppointment({ title, startsAt, location = '', notes = '' }) {
-  const s = getState();
-  const appt = {
-    id: uid(),
-    title: title.trim(),
-    startsAt,
-    location: location.trim(),
-    notes: notes.trim(),
-    createdAt: new Date().toISOString(),
-  };
-  s.appointments.push(appt);
-  persist();
-  return appt;
-}
-
-export function deleteAppointment(id) {
-  const s = getState();
-  s.appointments = s.appointments.filter((a) => a.id !== id);
-  persist();
-}
-
 export function listNotes() {
   return [...getState().notes].sort(
     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
@@ -235,7 +209,6 @@ export function exportJSON() {
     app: 'bump-tracker',
     household,
     dailyLogs: s.dailyLogs,
-    appointments: s.appointments,
     notes: s.notes,
   };
   return JSON.stringify(payload, null, 2);
