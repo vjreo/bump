@@ -280,6 +280,15 @@ function dueCountdown(daysLeft) {
   return { n: Math.abs(daysLeft), l: 'Days past due' };
 }
 
+/** Shared "done" checkbox: a real checkbox inside a 44px-tall label (the label text toggles it too). */
+function checkbox(id, label, checked, hintId = '') {
+  return `
+    <label class="check" for="${id}">
+      <input type="checkbox" class="check-box" id="${id}" ${checked ? 'checked' : ''} ${hintId ? `aria-describedby="${hintId}"` : ''} />
+      <span>${escapeHtml(label)}</span>
+    </label>`;
+}
+
 /** Today's workout + walk card: compact summary; tap to expand the full plan and safety details. */
 function workoutCard(week, log) {
   const day = todayNY();
@@ -293,11 +302,6 @@ function workoutCard(week, log) {
   const section = (title, moves) => `
     <h4 class="wo-section">${title}</h4>
     <ul class="wo-list">${moves.map(moveItem).join('')}</ul>`;
-  const check = (id, label, done) => `
-    <label class="wo-check" for="${id}">
-      <input type="checkbox" class="wo-box" id="${id}" ${done ? 'checked' : ''} />
-      <span>${label}</span>
-    </label>`;
   return `
     <div class="card workout-card">
       <details class="wo-details" id="woDetails" ${workoutUi.detailsOpen ? 'open' : ''}>
@@ -323,8 +327,8 @@ function workoutCard(week, log) {
         <p class="wo-guide">${escapeHtml(INTENSITY_LINE)}</p>
       </details>
       <div class="wo-foot">
-        ${check('woDone', 'Workout', Boolean(log.movementDone))}
-        ${check('walkDone', 'Walk', Boolean(log.walkDone))}
+        ${checkbox('woDone', 'Workout', log.movementDone)}
+        ${checkbox('walkDone', 'Walk', log.walkDone)}
       </div>
       <details class="wo-stop" id="woStop" ${workoutUi.stopOpen ? 'open' : ''}>
         <summary><span>${escapeHtml(EFFORT_LINE)}</span> <span class="wo-stop-link">When to stop</span></summary>
@@ -403,13 +407,8 @@ function viewToday({ due, week, daysLeft, log }) {
       <div class="card-head">
         <h3 class="card-title">🌙 Evening wind-down</h3>
       </div>
-      <div class="toggle-row">
-        <div>
-          <div style="font-weight:650">Done for tonight?</div>
-          <div class="meta">Dim lights, stretch, phone away</div>
-        </div>
-        <button class="toggle ${log.windDown ? 'on' : ''}" id="windToggle" role="switch" aria-checked="${log.windDown}" aria-label="Wind-down done"></button>
-      </div>
+      ${checkbox('windDone', 'Done for tonight', log.windDown, 'windHint')}
+      <div class="meta check-hint" id="windHint">Dim lights, stretch, phone away</div>
     </div>
 
     ${workoutCard(week, log)}
@@ -612,8 +611,8 @@ function bindView(main) {
   if (tab === 'today') {
     main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.bumpHydration(1); render(); });
     main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.bumpHydration(-1); render(); });
-    main.querySelector('#windToggle')?.addEventListener('click', () => {
-      store.setWindDown(!store.getTodayLog().windDown);
+    main.querySelector('#windDone')?.addEventListener('change', (e) => {
+      store.setWindDown(e.target.checked);
       render();
     });
     main.querySelector('#woDone')?.addEventListener('change', (e) => {
