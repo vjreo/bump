@@ -1,0 +1,282 @@
+/**
+ * Data layer — localStorage first.
+ * Shape mirrors planned Supabase tables so we can swap adapters later:
+ *   households, daily_logs, appointments, notes
+ */
+import { todayNY } from './utils/dates.js';
+import { suggestionForDate } from './data/movements.js';
+
+const STORAGE_KEY = 'bump.v1';
+const SCHEMA_VERSION = 1;
+
+function uid() {
+  return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function emptyState() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    household: {
+      id: uid(),
+      pin: null, // shared household PIN (plaintext locally; hash when Supabase lands)
+      dueDate: null,
+      createdAt: new Date().toISOString(),
+      names: { partnerA: 'Vince', partnerB: 'Chantal' },
+    },
+    dailyLogs: {}, // keyed by YYYY-MM-DD
+    appointments: [],
+    notes: [],
+    unlocked: false,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function ensureDaily(state, date = todayNY()) {
+  if (!state.dailyLogs[date]) {
+    const sug = suggestionForDate(date);
+    state.dailyLogs[date] = {
+      date,
+      hydrationCount: 0,
+      windDown: false,
+      movementDone: false,
+      movementSuggestion: sug.title,
+      movementDetail: sug.detail,
+      movementType: sug.type,
+    };
+  }
+  return state.dailyLogs[date];
+}
+
+let state = null;
+const listeners = new Set();
+
+function persist() {
+  state.updatedAt = new Date().toISOString();
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn('persist failed', e);
+  }
+  listeners.forEach((fn) => fn(state));
+}
+
+export function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      state = JSON.parse(raw);
+      if (!state.schemaVersion) state.schemaVersion = SCHEMA_VERSION;
+      if (!state.household) state = emptyState();
+    } else {
+      state = emptyState();
+    }
+  } catch {
+    state = emptyState();
+  }
+  ensureDaily(state);
+  return state;
+}
+
+export function getState() {
+  if (!state) load();
+  return state;
+}
+
+export function subscribe(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+export function isSetup() {
+  const s = getState();
+  return Boolean(s.household?.pin && s.household?.dueDate);
+}
+
+export function isUnlocked() {
+  return Boolean(getState().unlocked);
+}
+
+export function setupHousehold({ pin, dueDate }) {
+  const s = getState();
+  s.household.pin = String(pin).trim();
+  s.household.dueDate = dueDate;
+  s.household.createdAt = s.household.createdAt || new Date().toISOString();
+  s.unlocked = true;
+  ensureDaily(s);
+  persist();
+  return s;
+}
+
+export function unlock(pin) {
+  const s = getState();
+  if (String(pin).trim() === String(s.household.pin)) {
+    s.unlocked = true;
+    ensureDaily(s);
+    persist();
+    return true;
+  }
+  return false;
+}
+
+export function lock() {
+  const s = getState();
+  s.unlocked = false;
+  persist();
+}
+
+export function setDueDate(dueDate) {
+  const s = getState();
+  s.household.dueDate = dueDate;
+  persist();
+}
+
+export function setPin(pin) {
+  const s = getState();
+  s.household.pin = String(pin).trim();
+  persist();
+}
+
+export function getTodayLog() {
+  return ensureDaily(getState());
+}
+
+export function bumpHydration(delta = 1) {
+  const s = getState();
+  const log = ensureDaily(s);
+  log.hydrationCount = Math.max(0, (log.hydrationCount || 0) + delta);
+  persist();
+  return log;
+}
+
+export function setWindDown(done) {
+  const s = getState();
+  const log = ensureDaily(s);
+  log.windDown = Boolean(done);
+  persist();
+  return log;
+}
+
+export function setMovementDone(done) {
+  const s = getState();
+  const log = ensureDaily(s);
+  log.movementDone = Boolean(done);
+  persist();
+  return log;
+}
+
+export function setMovementSuggestion(sug) {
+  const s = getState();
+  const log = ensureDaily(s);
+  log.movementSuggestion = sug.title;
+  log.movementDetail = sug.detail;
+  log.movementType = sug.type;
+  log.movementDone = false;
+  persist();
+  return log;
+}
+
+export function listAppointments() {
+  return [...getState().appointments].sort(
+    (a, b) => new Date(a.startsAt) - new Date(b.startsAt)
+  );
+}
+
+export function addAppointment({ title, startsAt, location = '', notes = '' }) {
+  const s = getState();
+  const appt = {
+    id: uid(),
+    title: title.trim(),
+    startsAt,
+    location: location.trim(),
+    notes: notes.trim(),
+    createdAt: new Date().toISOString(),
+  };
+  s.appointments.push(appt);
+  persist();
+  return appt;
+}
+
+export function updateAppointment(id, patch) {
+  const s = getState();
+  const i = s.appointments.findIndex((a) => a.id === id);
+  if (i < 0) return null;
+  s.appointments[i] = { ...s.appointments[i], ...patch };
+  persist();
+  return s.appointments[i];
+}
+
+export function deleteAppointment(id) {
+  const s = getState();
+  s.appointments = s.appointments.filter((a) => a.id !== id);
+  persist();
+}
+
+export function listNotes() {
+  return [...getState().notes].sort(
+    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+  );
+}
+
+export function addNote({ body, author = '' }) {
+  const s = getState();
+  const note = {
+    id: uid(),
+    body: body.trim(),
+    author: author.trim(),
+    createdAt: new Date().toISOString(),
+  };
+  s.notes.unshift(note);
+  persist();
+  return note;
+}
+
+export function deleteNote(id) {
+  const s = getState();
+  s.notes = s.notes.filter((n) => n.id !== id);
+  persist();
+}
+
+/** Export full household JSON for phone-to-phone sync */
+export function exportJSON() {
+  const s = getState();
+  const payload = {
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    app: 'bump-tracker',
+    household: { ...s.household },
+    dailyLogs: s.dailyLogs,
+    appointments: s.appointments,
+    notes: s.notes,
+  };
+  // Don't export unlocked flag
+  return JSON.stringify(payload, null, 2);
+}
+
+export function importJSON(text) {
+  const data = JSON.parse(text);
+  if (!data || !data.household) throw new Error('Invalid bump export');
+  const s = getState();
+  s.schemaVersion = data.schemaVersion || SCHEMA_VERSION;
+  s.household = { ...data.household, id: data.household.id || s.household.id };
+  s.dailyLogs = data.dailyLogs || {};
+  s.appointments = data.appointments || [];
+  s.notes = data.notes || [];
+  s.unlocked = true;
+  ensureDaily(s);
+  persist();
+  return s;
+}
+
+export function resetAll() {
+  localStorage.removeItem(STORAGE_KEY);
+  state = emptyState();
+  persist();
+}
+
+// Future Supabase adapter hook (no-op for now)
+export const remote = {
+  enabled: false,
+  async sync() {
+    return { ok: false, reason: 'localStorage-only until Supabase project available' };
+  },
+};
