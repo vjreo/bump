@@ -43,6 +43,9 @@ const workoutUi = { detailsOpen: false, stopOpen: false };
 // Shared notes (Google Doc) status for the Notes tab (notes themselves are cached by notesDoc.js)
 const notesUi = { loading: false, busy: '', error: '', offline: false, needsAuth: false, docError: '', docMsg: '' };
 const NOTE_AUTHOR_KEY = 'bump.noteAuthor.v1';
+const NOTE_DRAFT_KEY = 'bump.noteDraft.v1'; // unsent note text, so a failed add or a re-render never loses it
+const getDraft = () => localStorage.getItem(NOTE_DRAFT_KEY) || '';
+const setDraft = (v) => (v ? localStorage.setItem(NOTE_DRAFT_KEY, v) : localStorage.removeItem(NOTE_DRAFT_KEY));
 const CAL_HELP = `Add ${CALENDAR_TAG} to an event title in your Google Calendar to show it here.`;
 
 store.load();
@@ -635,6 +638,7 @@ function viewNotes() {
       <div class="card-head"><h3 class="card-title">Shared notes</h3></div>
       <p class="meta" style="margin:0 0 12px">Notes are kept in a Google Doc called “${escapeHtml(NOTES_DOC_TITLE)}” in your Google Drive, so both phones see the same list. Bump can only open docs it creates.</p>
       ${notesUi.error ? `<p class="err" style="margin:0 0 10px">${escapeHtml(notesUi.error)}</p>` : ''}
+      ${getDraft() ? '<p class="meta" style="margin:0 0 10px">Your unsent note is kept on this phone and will be waiting after you connect.</p>' : ''}
       <button class="btn btn-primary" id="notesConnect" ${notesUi.loading ? 'disabled' : ''}>${notesUi.loading ? 'Connecting…' : 'Connect shared notes'}</button>
       ${local.length ? `<p class="meta" style="margin:12px 0 0">${local.length} note${local.length === 1 ? ' is' : 's are'} saved only on this phone. After connecting, you can copy ${local.length === 1 ? 'it' : 'them'} to the shared doc.</p>` : ''}
     </div>
@@ -872,11 +876,14 @@ function bindView(main) {
       const text = bodyEl.value.trim();
       if (!text) return bodyEl.focus();
       const author = main.querySelector('#noteAuthor').value;
-      notesUi.draft = text;
-      await notesAction('add', () => notesDoc.addNote({ text, author }), () => { notesUi.draft = ''; });
+      setDraft(bodyEl.value);
+      await notesAction('add', () => notesDoc.addNote({ text, author }), () => setDraft(''));
     });
     const bodyEl = main.querySelector('#noteBody');
-    if (bodyEl && notesUi.draft) bodyEl.value = notesUi.draft; // keep the text if adding failed
+    if (bodyEl) {
+      bodyEl.value = getDraft(); // keep typed text across re-renders, failed adds, and reloads
+      bodyEl.addEventListener('input', () => setDraft(bodyEl.value));
+    }
     main.querySelector('#notesMigrate')?.addEventListener('click', async () => {
       await notesAction('copy', () => notesDoc.copyLocalNotes(store.listNotes()), () => store.clearLocalNotes());
     });
@@ -953,6 +960,7 @@ function bindView(main) {
       if (confirm('Erase all Bump data on this device?')) {
         await calendar.disconnect();
         notesDoc.forgetDoc();
+        setDraft('');
         Object.assign(cal, { loading: false, error: '', needsReconnect: false, stale: false });
         store.resetAll();
         gateMode = 'setup';

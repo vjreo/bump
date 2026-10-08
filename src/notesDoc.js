@@ -10,7 +10,7 @@
  * New notes are appended at the bottom; the app lists them newest first.
  */
 import { NOTES_SCOPE, NOTES_DOC_TITLE, ALL_SCOPES } from './config.js';
-import { isConfigured, readJSON, writeJSON, validToken, clearToken, authorize, hasGranted, grantedScopes } from './google.js';
+import { isConfigured, readJSON, writeJSON, validToken, clearToken, authorize, hasGranted, grantedScopes, forgetScope } from './google.js';
 
 const DOC_KEY = 'bump.notesDoc.v1'; // { id }
 const CACHE_KEY = 'bump.notesDoc.cache.v1'; // { docId, notes, fetchedAt } — last notes read, for offline viewing
@@ -182,22 +182,84 @@ export function deleteRequest(note) {
 // ---------- Google API ----------
 
 class AuthError extends Error {}
-export class AccessError extends Error {}
 class ConflictError extends Error {}
 export class NeedsAuthError extends Error {}
+export class ScopeMissingError extends Error {}
 
-async function api(token, url, { method = 'GET', body } = {}) {
+const SERVICE_NAMES = { 'drive.googleapis.com': 'Google Drive API', 'docs.googleapis.com': 'Google Docs API' };
+export const SCOPE_MISSING_MSG = 'Notes permission wasn’t granted. Tap Connect shared notes and leave the Google Drive box checked.';
+
+/**
+ * A failed Google API call, sorted into a plain-words kind:
+ *   apiDisabled – the Drive or Docs API isn't turned on in the Cloud project (SERVICE_DISABLED / accessNotConfigured)
+ *   scope       – the token lacks drive.file (ACCESS_TOKEN_SCOPE_INSUFFICIENT / insufficientPermissions)
+ *   docAccess   – Bump can't open that doc (404, appNotAuthorizedToFile, or a bare PERMISSION_DENIED on a doc)
+ *   rateLimit, storage, other
+ */
+export class GoogleApiError extends Error {
+  constructor({ status, reason, service, googleMessage, kind, what }) {
+    super('');
+    Object.assign(this, { status, reason, service, googleMessage, kind, what });
+    this.message = plainMessage(this);
+  }
+}
+
+function plainMessage(e) {
+  switch (e.kind) {
+    case 'apiDisabled': {
+      const api = SERVICE_NAMES[e.service] || 'A required Google API';
+      return `${api} isn’t turned on for this app. In Google Cloud, enable it (APIs & Services → Library), wait a few minutes, then try again.`;
+    }
+    case 'scope':
+      return SCOPE_MISSING_MSG;
+    case 'docAccess':
+      return 'Bump can’t open the notes doc. It can only use docs it created.';
+    case 'rateLimit':
+      return 'Google is busy right now. Wait a minute and try again.';
+    case 'storage':
+      return 'Your Google storage is full, so Bump can’t save to the notes doc.';
+    default:
+      return `Google couldn’t ${e.what || 'complete the request'} (${e.status}${e.reason ? `, ${e.reason}` : ''})${e.googleMessage ? `: ${e.googleMessage}` : ''}`;
+  }
+}
+
+/** Pull reason/service out of Google's error JSON (both the newer ErrorInfo and older errors[] shapes). */
+export function classifyGoogleError(status, json, url, what) {
+  const err = json?.error || {};
+  const info = (err.details || []).find((d) => String(d['@type'] || '').endsWith('google.rpc.ErrorInfo')) || {};
+  const legacy = (err.errors || [])[0] || {};
+  const reason = info.reason || legacy.reason || (typeof err.status === 'string' ? err.status : '') || '';
+  const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
+  const service = info.metadata?.service || (host === 'docs.googleapis.com' ? 'docs.googleapis.com' : url.includes('/drive/') ? 'drive.googleapis.com' : host);
+  const msg = String(err.message || legacy.message || '');
+  let kind = 'other';
+  if (reason === 'SERVICE_DISABLED' || legacy.reason === 'accessNotConfigured' || /has not been used in project|is disabled/i.test(msg)) kind = 'apiDisabled';
+  else if (['ACCESS_TOKEN_SCOPE_INSUFFICIENT', 'insufficientPermissions', 'insufficientScopes'].includes(reason) || legacy.reason === 'insufficientPermissions' || /insufficient authentication scopes/i.test(msg)) kind = 'scope';
+  else if (['rateLimitExceeded', 'userRateLimitExceeded', 'RATE_LIMIT_EXCEEDED', 'RESOURCE_EXHAUSTED'].includes(reason) || status === 429) kind = 'rateLimit';
+  else if (reason === 'storageQuotaExceeded') kind = 'storage';
+  else if (status === 404 || reason === 'appNotAuthorizedToFile' || reason === 'notFound' || (status === 403 && /documents\/[^/:]+/.test(url) && (reason === 'PERMISSION_DENIED' || reason === 'forbidden' || !reason))) kind = 'docAccess';
+  return new GoogleApiError({ status, reason, service, googleMessage: msg, kind, what });
+}
+
+async function api(token, url, { method = 'GET', body, what = '' } = {}) {
   const res = await fetch(url, {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.ok) return res.json();
+  const raw = await res.text().catch(() => '');
+  let json = null;
+  try { json = JSON.parse(raw); } catch { /* not JSON */ }
   if (res.status === 401) throw new AuthError('Google sign-in expired');
-  if (res.status === 403 || res.status === 404) throw new AccessError(`Notes doc not accessible (${res.status})`);
-  if (res.status === 400 && /revision/i.test(await res.clone().text())) throw new ConflictError('Doc changed');
-  if (!res.ok) throw new Error(`Google request failed (${res.status})`);
-  return res.json();
+  if (res.status === 400 && /revision/i.test(raw)) throw new ConflictError('Doc changed');
+  const e = classifyGoogleError(res.status, json, url, what);
+  // Full detail for debugging (Safari Web Inspector / remote console). No token: it's only in the header.
+  console.error('[bump] Google API error', JSON.stringify({ what, method, url: url.split('?')[0], status: res.status, kind: e.kind, reason: e.reason, service: e.service, response: json ?? raw }));
+  throw e;
 }
+
+const isDocAccess = (e) => e instanceof GoogleApiError && e.kind === 'docAccess';
 
 /** Run fn(token) with a Notes-capable token; interactive may open Google sign-in (from a tap). */
 async function withToken(fn, { interactive }) {
@@ -206,8 +268,8 @@ async function withToken(fn, { interactive }) {
     if (!token) {
       if (!interactive) throw new NeedsAuthError('Sign in again to update notes');
       const need = grantedScopes().length ? [NOTES_SCOPE] : ALL_SCOPES; // first sign-in covers Calendar too
-      const { accessToken, scopes } = await authorize(need);
-      if (!scopes.includes(NOTES_SCOPE)) throw new Error('Google Docs access was not granted');
+      const { accessToken, granted } = await authorize(need);
+      if (!granted(NOTES_SCOPE)) throw new ScopeMissingError(SCOPE_MISSING_MSG);
       token = accessToken;
     }
     try {
@@ -218,6 +280,12 @@ async function withToken(fn, { interactive }) {
         token = null;
         continue;
       }
+      if (e instanceof GoogleApiError && e.kind === 'scope') {
+        // Token doesn't actually carry drive.file: forget it so Notes shows "Connect shared notes".
+        clearToken();
+        forgetScope(NOTES_SCOPE);
+        throw new ScopeMissingError(SCOPE_MISSING_MSG);
+      }
       throw e;
     }
   }
@@ -227,7 +295,7 @@ async function withToken(fn, { interactive }) {
 const DOC_FIELDS = 'documentId,title,revisionId,body.content(startIndex,endIndex,paragraph(elements(textRun(content))))';
 
 function getDoc(token, id) {
-  return api(token, `${DOCS}/${encodeURIComponent(id)}?fields=${encodeURIComponent(DOC_FIELDS)}`);
+  return api(token, `${DOCS}/${encodeURIComponent(id)}?fields=${encodeURIComponent(DOC_FIELDS)}`, { what: 'open the notes doc' });
 }
 
 /** Use the stored doc, else the oldest "Bump Notes" doc Bump can see, else create one. */
@@ -236,16 +304,17 @@ async function ensureDoc(token) {
   if (stored) return stored;
   const q = `name='${NOTES_DOC_TITLE}' and mimeType='application/vnd.google-apps.document' and trashed=false`;
   const params = new URLSearchParams({ q, orderBy: 'createdTime', pageSize: '10', spaces: 'drive', fields: 'files(id,name,createdTime)' });
-  const found = await api(token, `${DRIVE}?${params}`);
+  const found = await api(token, `${DRIVE}?${params}`, { what: 'look for the Bump Notes doc in Google Drive' });
   if (found.files?.length) {
     setDocId(found.files[0].id);
     return found.files[0].id;
   }
-  const created = await api(token, DOCS, { method: 'POST', body: { title: NOTES_DOC_TITLE } });
+  const created = await api(token, DOCS, { method: 'POST', body: { title: NOTES_DOC_TITLE }, what: 'create the Bump Notes doc' });
   const title = `${NOTES_DOC_TITLE}\n`;
   const intro = 'Shared notes from the Bump app. New notes are added at the bottom: a bold date line, then the note.\n';
   await api(token, `${DOCS}/${created.documentId}:batchUpdate`, {
     method: 'POST',
+    what: 'set up the Bump Notes doc',
     body: {
       requests: [
         { insertText: { location: { index: 1 }, text: title + intro } },
@@ -263,32 +332,41 @@ function saveCache(docId, doc) {
   writeJSON(CACHE_KEY, { docId, title: doc.title || NOTES_DOC_TITLE, notes: slim, fetchedAt: new Date().toISOString() });
 }
 
-/** Read the doc into the cache. If an auto-found doc vanished, find/create again once. */
-async function load(token) {
-  let id = await ensureDoc(token);
+/**
+ * Open the notes doc. If the stored doc ID can't be opened (403/404: deleted, or a doc Bump didn't
+ * create), forget it and fall back to find-or-create once.
+ */
+async function openDoc(token) {
+  const stored = getDocId();
+  const id = await ensureDoc(token);
   try {
-    const doc = await getDoc(token, id);
-    saveCache(id, doc);
-    return doc;
+    return { id, doc: await getDoc(token, id) };
   } catch (e) {
-    if (!(e instanceof AccessError)) throw e;
+    if (!stored || !isDocAccess(e)) throw e;
+    console.warn('[bump] stored notes doc not accessible; finding or creating "Bump Notes" instead');
     localStorage.removeItem(DOC_KEY);
-    id = await ensureDoc(token);
-    const doc = await getDoc(token, id);
-    saveCache(id, doc);
-    return doc;
+    clearCache();
+    const fresh = await ensureDoc(token);
+    return { id: fresh, doc: await getDoc(token, fresh) };
   }
+}
+
+/** Read the doc into the cache. */
+async function load(token) {
+  const { id, doc } = await openDoc(token);
+  saveCache(id, doc);
+  return doc;
 }
 
 /** Apply a change built from a fresh copy of the doc; retry once if the other phone edited meanwhile. */
 async function edit(token, build) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const id = await ensureDoc(token);
-    const doc = await getDoc(token, id);
+    const { id, doc } = await openDoc(token);
     const requests = build(parseDocument(doc));
     try {
       await api(token, `${DOCS}/${encodeURIComponent(id)}:batchUpdate`, {
         method: 'POST',
+        what: 'save to the notes doc',
         body: { requests, writeControl: { requiredRevisionId: doc.revisionId } },
       });
       return load(token);
@@ -314,6 +392,8 @@ export async function refresh({ interactive = false } = {}) {
 
 function failure(e) {
   if (e instanceof NeedsAuthError) return { ok: false, needsAuth: true, error: e.message };
+  if (e instanceof ScopeMissingError) return { ok: false, needsScope: true, error: e.message };
+  if (e instanceof GoogleApiError) return { ok: false, error: e.message, kind: e.kind, reason: e.reason };
   if (e instanceof TypeError) return { ok: false, offline: true }; // fetch network failure
   return { ok: false, error: e.message || 'Could not reach Google Docs' };
 }
@@ -377,7 +457,7 @@ export async function useDoc(input) {
     }, { interactive: true });
     return { ok: true };
   } catch (e) {
-    if (e instanceof AccessError) {
+    if (isDocAccess(e)) {
       return { ok: false, error: 'Bump can’t open that doc. It can only use docs it created (Google’s most limited Drive permission).' };
     }
     return failure(e);

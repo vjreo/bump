@@ -69,6 +69,13 @@ Notes are stored in a Google Doc in the shared account’s Drive, read and writt
 - **Migration:** notes saved on a phone before this feature show a one-time **Copy my phone’s notes to the shared doc** button (keeps original dates), then local notes are cleared.
 - **Limits:** if both phones connect for the very first time simultaneously, two docs could be created; Bump uses the oldest one, and you can delete the extra one in Drive.
 
+**Troubleshooting notes errors.** Bump shows Google’s reason in plain words and logs the full error JSON to the browser console (`[bump] Google API error`):
+
+- “Google Drive API isn’t turned on for this app” / “Google Docs API isn’t turned on”: enable that API in the same Google Cloud project as the OAuth client (APIs & Services → Library), wait a few minutes, then retry. Bump needs **both**: Drive to find the “Bump Notes” doc, Docs to read and write it.
+- “Notes permission wasn’t granted”: the sign-in didn’t include Google Drive file access. Bump switches back to **Connect shared notes**; tap it and leave the Drive box checked.
+- A saved doc ID that Bump can’t open (deleted, or not created by Bump) is forgotten automatically, and Bump finds or creates “Bump Notes” instead.
+- Text typed in **New note** is kept on the phone until it’s saved, even if adding fails or the page reloads.
+
 ## Invite gate (honest limits)
 
 This is a **client-side shared-secret** check on a **static public site**. A SHA-256 hash of the invite is baked into the JS bundle at build time (`VITE_INVITE_HASH`). After a correct invite, the browser remembers unlock in `localStorage` so you don’t retype daily — the household PIN still protects data as before.

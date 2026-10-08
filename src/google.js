@@ -53,6 +53,11 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Drop one scope from the remembered list (e.g. Google says the token doesn't really have it). */
+export function forgetScope(scope) {
+  writeJSON(GRANTED_KEY, grantedScopes().filter((s) => s !== scope));
+}
+
 // ---------- GIS ----------
 
 let gisPromise = null;
@@ -94,12 +99,16 @@ function getTokenClient() {
         p.reject(new Error(resp?.error_description || resp?.error || 'Authorization failed'));
         return;
       }
-      const scopes = String(resp.scope || '').split(/\s+/).filter(Boolean);
+      // Use GIS's own check when available (granular consent: the user may untick a scope).
+      const oauth2 = window.google?.accounts?.oauth2;
+      const listed = String(resp.scope || '').split(/\s+/).filter(Boolean);
+      const granted = (sc) => (typeof oauth2?.hasGrantedAllScopes === 'function' ? oauth2.hasGrantedAllScopes(resp, sc) : listed.includes(sc));
+      const scopes = p.asked.filter(granted).concat(listed.filter((sc) => !p.asked.includes(sc)));
       const expiresIn = Number(resp.expires_in) || 3600;
       writeJSON(TOKEN_KEY, { accessToken: resp.access_token, expiresAt: Date.now() + expiresIn * 1000, scopes });
       // Remember Bump scopes the user granted (they can untick one on the consent screen).
       writeJSON(GRANTED_KEY, [...new Set(scopes.filter((sc) => p.asked.includes(sc)))]);
-      p.resolve({ accessToken: resp.access_token, scopes });
+      p.resolve({ accessToken: resp.access_token, scopes, granted: (sc) => scopes.includes(sc) });
     },
     error_callback: (err) => {
       const p = pending;
