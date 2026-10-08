@@ -28,7 +28,6 @@ import {
   addDays,
 } from './utils/dates.js';
 
-const HYDRATION_GOAL = 8;
 const app = document.getElementById('app');
 
 let tab = 'today';
@@ -395,9 +394,10 @@ function viewToday({ due, week, daysLeft, log }) {
   const shownWeek = browseWeek ?? week;
   const browseContent = getWeekContent(shownWeek);
   const countdown = dueCountdown(daysLeft);
-  const glasses = Array.from({ length: HYDRATION_GOAL }, (_, i) =>
-    `<div class="glass ${i < log.hydrationCount ? 'on' : ''}" aria-hidden="true"></div>`
-  ).join('');
+  const waterOz = log.hydrationOz || 0;
+  const waterGoal = store.getWaterGoal();
+  const waterPct = Math.min(100, Math.round((waterOz / waterGoal) * 100));
+  const waterLeft = waterGoal - waterOz;
 
   const pills = Array.from({ length: 42 }, (_, i) => i + 1).map((w) => {
     const cls = [
@@ -454,16 +454,15 @@ function viewToday({ due, week, daysLeft, log }) {
         <h3 class="card-title">💧 Hydration</h3>
       </div>
       <div class="hydro">
-        <div>
-          <div class="hydro-count">${log.hydrationCount}</div>
-          <div class="meta">of ${HYDRATION_GOAL} glasses today</div>
-        </div>
-        <div class="btn-row">
-          <button class="btn-icon" id="hydroMinus" aria-label="Remove glass">−</button>
-          <button class="btn btn-sage btn-sm" id="hydroPlus">+ Glass</button>
-        </div>
+        <div class="hydro-amt"><span class="hydro-count">${waterOz}</span><span class="hydro-of"> / ${waterGoal} oz</span></div>
+        <div class="hydro-left meta">${waterLeft > 0 ? `${waterLeft} oz to go` : 'Goal reached 🎉'}</div>
       </div>
-      <div class="hydro-glasses">${glasses}</div>
+      <div class="hydro-bar${waterLeft > 0 ? '' : ' done'}" role="progressbar" aria-label="Water today" aria-valuemin="0" aria-valuemax="${waterGoal}" aria-valuenow="${Math.min(waterOz, waterGoal)}" aria-valuetext="${waterOz} of ${waterGoal} fluid ounces"><span style="width:${waterPct}%"></span></div>
+      <div class="hydro-btns">
+        <button class="btn btn-ghost btn-sm" id="hydroMinus" aria-label="Undo 8 ounces" ${waterOz ? '' : 'disabled'}>−8 oz</button>
+        <button class="btn btn-sage btn-sm" id="hydroPlus" aria-label="Add 8 ounces">+8 oz</button>
+        <button class="btn btn-sage btn-sm" id="hydroPlus16" aria-label="Add 16 ounces">+16 oz</button>
+      </div>
     </div>
 
     ${workoutCard(week, log)}
@@ -706,6 +705,17 @@ function viewSettings(s) {
       <button class="btn btn-sage btn-sm" id="saveDue">Update due date</button>
     </div>
     <div class="card">
+      <div class="card-head"><h3 class="card-title">Daily water goal</h3></div>
+      <form id="waterGoalForm" novalidate>
+        <div class="field goal-field">
+          <input class="input" type="number" inputmode="numeric" pattern="[0-9]*" id="setWaterGoal" min="${store.WATER_GOAL_MIN}" max="${store.WATER_GOAL_MAX}" step="1" value="${store.getWaterGoal()}" aria-label="Daily water goal in fluid ounces" />
+          <span class="goal-unit">fl oz</span>
+        </div>
+        <p class="hint" style="margin:-6px 0 12px">ACOG suggests 8–12 cups (64–96 fl oz) of water a day during pregnancy. 1 cup = 8 fl oz.</p>
+        <button class="btn btn-sage btn-sm" type="submit">Save goal</button>
+      </form>
+    </div>
+    <div class="card">
       <div class="card-head"><h3 class="card-title">Household PIN</h3></div>
       <form id="pinForm" novalidate>
         <input type="text" name="username" autocomplete="username" value="Bump household" hidden readonly />
@@ -819,8 +829,9 @@ function bindView(main) {
       });
     });
     updateActiveJump();
-    main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.bumpHydration(1); render(); });
-    main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.bumpHydration(-1); render(); });
+    main.querySelector('#hydroPlus')?.addEventListener('click', () => { store.addWater(8); render(); });
+    main.querySelector('#hydroPlus16')?.addEventListener('click', () => { store.addWater(16); render(); });
+    main.querySelector('#hydroMinus')?.addEventListener('click', () => { store.addWater(-8); render(); });
     main.querySelector('#woDone')?.addEventListener('change', (e) => {
       const week = pregnancyWeek(store.getState().household.dueDate);
       store.setWorkoutDone(e.target.checked, workoutFor(todayNY(), week).id);
@@ -881,6 +892,14 @@ function bindView(main) {
     main.querySelector('#saveDue')?.addEventListener('click', () => {
       const v = main.querySelector('#setDue').value;
       if (v) { store.setDueDate(v); browseWeek = null; render(); }
+    });
+    main.querySelector('#waterGoalForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = main.querySelector('#setWaterGoal').value.trim();
+      if (!/^\d+$/.test(v) || !store.setWaterGoal(Number(v))) {
+        return alert(`Enter a goal from ${store.WATER_GOAL_MIN} to ${store.WATER_GOAL_MAX} fl oz (whole numbers).`);
+      }
+      render();
     });
     main.querySelector('#pinForm')?.addEventListener('submit', (e) => {
       e.preventDefault();

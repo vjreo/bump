@@ -11,7 +11,7 @@ Shared pregnancy tracker for Vince & Chantal — calm, mobile-first, **localStor
 - **Shortcut chips** under the header (Week, Prep, Hydration, Workout, Browse) stay pinned while you scroll, jump to each card, and highlight the card in view. Tapping **Today** again scrolls back to the top.
 - Week-by-week card with the current week number (NHS Best Start–inspired structure; original summaries + link out), plus a browse-by-week strip
 - **Prepare this week / Looking ahead** — practical household checklist for the current stage of pregnancy
-- Hydration log
+- **Hydration in fl oz**: shows “24 / 80 oz” with a progress bar and +8 oz, +16 oz, and −8 oz (undo) buttons. The default daily goal is 80 fl oz, in the middle of ACOG’s 8–12 cups (64–96 fl oz) a day for pregnancy; change it in **Settings → Daily water goal** (16–200 fl oz). Logs saved before this as glasses were converted automatically (1 glass = 8 fl oz).
 - **Today’s workout + walk**: a short daily kettlebell + bodyweight session (10–15 min) plus a daily walk suggestion, picked from the date so both phones match, with separate Workout and Walk checks. See [Daily workout](#daily-workout).
 - **Appointments from Google Calendar** (read-only): only events with **[Bump]** in the title are shown (tag stripped). Upcoming ~6 months plus a collapsible list of recent past events; earlier ones grayed out, same-day ones tagged **Today**, day-before reminder for tomorrow’s. Last fetch is cached on the phone for offline viewing.
 - **Shared notes in a Google Doc** (“Bump Notes”) so both phones see the same list, newest first. Add a note (who + text), open the doc in Google Docs, or delete a note. The last copy is cached on the phone for offline reading (read-only). See [Shared notes](#shared-notes-google-doc).

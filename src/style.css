@@ -25,7 +25,11 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Keep focused/scrolled-to controls clear of the fixed bottom nav. */
+  scroll-padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
+}
 body {
   margin: 0;
   min-height: 100dvh;
@@ -357,34 +361,41 @@ a { color: var(--sage-deep); }
 /* Hydration */
 .hydro {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
+.hydro-amt { white-space: nowrap; }
 .hydro-count {
   font-family: var(--display);
   font-size: 2.2rem;
   color: var(--sage-deep);
   line-height: 1;
 }
-.hydro-glasses {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.hydro-of { font-size: 1rem; font-weight: 650; color: var(--ink-muted); }
+.hydro-left { text-align: right; }
+.hydro-bar {
+  height: 12px;
   margin-top: 12px;
-}
-.glass {
-  width: 28px; height: 34px;
-  border-radius: 6px 6px 8px 8px;
-  border: 2px solid var(--sage-soft);
-  background: transparent;
-  position: relative;
+  border-radius: 999px;
+  background: var(--sage-mist);
+  border: 1px solid var(--line);
   overflow: hidden;
 }
-.glass.on {
-  background: linear-gradient(180deg, #a8c4d4 0%, #6b9aab 100%);
-  border-color: #5a8796;
+.hydro-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #a8c4d4 0%, #6b9aab 100%);
+  transition: width 0.25s ease;
 }
+.hydro-bar.done > span { background: linear-gradient(90deg, #8fb39a 0%, var(--sage-deep) 100%); }
+.hydro-btns { display: flex; gap: 8px; margin-top: 12px; }
+.hydro-btns .btn { flex: 1; min-height: 44px; white-space: nowrap; }
+.hydro-btns .btn:disabled { opacity: 0.45; cursor: default; }
+.goal-field { display: flex; align-items: center; gap: 10px; }
+.goal-field .input { width: 110px; font-size: 16px; }
+.goal-unit { color: var(--ink-muted); font-weight: 600; }
 
 .workout-card { padding-top: 14px; padding-bottom: 12px; }
 .wo-details > summary { list-style: none; cursor: pointer; }

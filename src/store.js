@@ -7,7 +7,13 @@
 import { todayNY } from './utils/dates.js';
 
 const STORAGE_KEY = 'bump.v1';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2; // v2: hydration in fl oz (was glasses)
+
+/** Default daily water goal. ACOG: 8–12 cups (64–96 fl oz) a day in pregnancy; 80 oz is mid-range. */
+export const DEFAULT_WATER_GOAL_OZ = 80;
+export const OZ_PER_GLASS = 8;
+export const WATER_GOAL_MIN = 16;
+export const WATER_GOAL_MAX = 200;
 
 function uid() {
   return crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -22,6 +28,7 @@ function emptyState() {
       dueDate: null,
       createdAt: new Date().toISOString(),
       names: { partnerA: 'Vince', partnerB: 'Chantal' },
+      waterGoalOz: DEFAULT_WATER_GOAL_OZ,
     },
     dailyLogs: {}, // keyed by YYYY-MM-DD
     notes: [],
@@ -34,7 +41,7 @@ function ensureDaily(state, date = todayNY()) {
   if (!state.dailyLogs[date]) {
     state.dailyLogs[date] = {
       date,
-      hydrationCount: 0,
+      hydrationOz: 0, // fl oz of water today
       movementDone: false, // today's workout marked done
       workoutId: null, // which session was done (see data/workouts.js)
       walkDone: false, // today's walk marked done
@@ -44,6 +51,24 @@ function ensureDaily(state, date = todayNY()) {
 }
 
 let state = null;
+
+/** v1 → v2: glasses → fl oz (1 glass = 8 oz) so history isn't lost. Returns true if anything changed. */
+function migrate(s) {
+  let changed = false;
+  for (const log of Object.values(s.dailyLogs || {})) {
+    if (log && typeof log.hydrationCount === 'number') {
+      if (typeof log.hydrationOz !== 'number') log.hydrationOz = Math.max(0, log.hydrationCount) * OZ_PER_GLASS;
+      delete log.hydrationCount;
+      changed = true;
+    }
+  }
+  if (s.household && !Number.isFinite(s.household.waterGoalOz)) {
+    s.household.waterGoalOz = DEFAULT_WATER_GOAL_OZ;
+    changed = true;
+  }
+  if (s.schemaVersion !== SCHEMA_VERSION) { s.schemaVersion = SCHEMA_VERSION; changed = true; }
+  return changed;
+}
 
 function persist() {
   state.updatedAt = new Date().toISOString();
@@ -59,8 +84,9 @@ export function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       state = JSON.parse(raw);
-      if (!state.schemaVersion) state.schemaVersion = SCHEMA_VERSION;
       if (!state.household) state = emptyState();
+      if (!state.dailyLogs) state.dailyLogs = {};
+      if (migrate(state)) persist();
     } else {
       state = emptyState();
     }
@@ -135,12 +161,27 @@ export function getTodayLog() {
   return ensureDaily(getState());
 }
 
-export function bumpHydration(delta = 1) {
+/** Add (or with a negative number, undo) fl oz of water for today; never below 0. */
+export function addWater(oz) {
   const s = getState();
   const log = ensureDaily(s);
-  log.hydrationCount = Math.max(0, (log.hydrationCount || 0) + delta);
+  log.hydrationOz = Math.max(0, (log.hydrationOz || 0) + oz);
   persist();
   return log;
+}
+
+export function getWaterGoal() {
+  const g = getState().household?.waterGoalOz;
+  return Number.isFinite(g) && g > 0 ? g : DEFAULT_WATER_GOAL_OZ;
+}
+
+/** Returns false (no change) unless goal is a whole number of fl oz in range. */
+export function setWaterGoal(oz) {
+  const n = Number(oz);
+  if (!Number.isInteger(n) || n < WATER_GOAL_MIN || n > WATER_GOAL_MAX) return false;
+  getState().household.waterGoalOz = n;
+  persist();
+  return true;
 }
 
 export function setWorkoutDone(done, workoutId = null) {
