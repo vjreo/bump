@@ -15,7 +15,7 @@ import {
 import * as calendar from './calendar.js';
 import * as notesDoc from './notesDoc.js';
 import { loadGis } from './google.js';
-import { CALENDAR_TAG, CALENDAR_PAST_LIMIT, NOTES_DOC_TITLE } from './config.js';
+import { CALENDAR_TAG, CALENDAR_PAST_LIMIT, NOTES_DOC_TITLE, PREP_CHECKLIST_URL } from './config.js';
 import {
   todayNY,
   pregnancyWeek,
@@ -449,6 +449,7 @@ function viewToday({ due, week, daysLeft, log }) {
         <ul class="prep-list muted">${aheadItems}</ul>
       </div>
       <p class="disclaimer">Practical household reminders — not medical advice. Follow your OB or midwife’s plan.</p>
+      <a class="prep-link" href="${escapeHtml(PREP_CHECKLIST_URL)}" target="_blank" rel="noopener noreferrer">See full checklist</a>
     </div>`;
     })()}
 

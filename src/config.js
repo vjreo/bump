@@ -31,3 +31,6 @@ export const ALL_SCOPES = [CALENDAR_SCOPE, NOTES_SCOPE];
 export const CALENDAR_LOOKAHEAD_DAYS = 183;
 export const CALENDAR_LOOKBACK_DAYS = 60;
 export const CALENDAR_PAST_LIMIT = 10;
+
+/** External link to the full prep checklist (opens in a new tab). */
+export const PREP_CHECKLIST_URL = 'https://app.notion.com/p/1a6aaca9f7cf4213983426a1890394f2';

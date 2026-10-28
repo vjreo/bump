@@ -577,3 +577,11 @@ a { color: var(--sage-deep); }
   text-transform: uppercase;
   color: var(--sage-deep);
 }
+.prep-link {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--sage-deep);
+  text-decoration: none;
+}
+.prep-link:hover { text-decoration: underline; }
