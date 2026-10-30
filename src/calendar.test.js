@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { hasTag, stripTag, toTaggedEvents, getCache, isConnected, clearCache, isConfigured } from './calendar.js';
+import { hasTag, stripTag, toTaggedEvents, getCache, isConnected, clearCache, isConfigured, refresh, disconnect } from './calendar.js';
+import * as google from './google.js';
 
 describe('calendar module', () => {
   beforeEach(() => {
@@ -8,6 +9,7 @@ describe('calendar module', () => {
 
   afterEach(() => {
     localStorage.clear();
+    vi.restoreAllMocks();
   });
 
   describe('hasTag', () => {
@@ -57,10 +59,12 @@ describe('calendar module', () => {
     });
 
     it('handles non-string input', () => {
-      // String(null) = "null", String(undefined) = "undefined"
-      // stripTag coerces to string, so these become "null" and "undefined"
       expect(stripTag(null)).toBe('null');
       expect(stripTag(undefined)).toBe('undefined');
+    });
+
+    it('removes multiple [Bump] tags', () => {
+      expect(stripTag('[Bump] Visit [Bump]')).toBe('Visit');
     });
   });
 
@@ -148,6 +152,22 @@ describe('calendar module', () => {
     it('handles empty items array', () => {
       expect(toTaggedEvents([])).toEqual([]);
     });
+
+    it('extracts event id', () => {
+      const items = [
+        { id: 'evt-123', summary: '[Bump] Test', start: { dateTime: '2026-05-15T10:00:00' } },
+      ];
+      const result = toTaggedEvents(items);
+      expect(result[0].id).toBe('evt-123');
+    });
+
+    it('handles missing end time', () => {
+      const items = [
+        { id: '1', summary: '[Bump] No end', start: { dateTime: '2026-05-15T10:00:00' } },
+      ];
+      const result = toTaggedEvents(items);
+      expect(result[0].end).toBe('2026-05-15T10:00:00');
+    });
   });
 
   describe('getCache', () => {
@@ -186,12 +206,239 @@ describe('calendar module', () => {
       localStorage.setItem('bump.gcal.cache.v1', JSON.stringify({ events: [] }));
       expect(isConnected()).toBe(true);
     });
+
+    it('returns true when calendar scope is granted', () => {
+      localStorage.setItem('bump.google.scopes.v1', JSON.stringify(['https://www.googleapis.com/auth/calendar.events.readonly']));
+      expect(isConnected()).toBe(true);
+    });
   });
 
   describe('isConfigured', () => {
     it('returns false when no Google client ID is set', () => {
-      // In test environment, VITE_GOOGLE_CLIENT_ID is not set
       expect(isConfigured()).toBe(false);
+    });
+  });
+
+  describe('refresh', () => {
+    it('returns error when not configured', async () => {
+      const result = await refresh();
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('not set up');
+    });
+
+    it('returns needsReconnect when not connected and not interactive', async () => {
+      localStorage.setItem('bump.gcal.cache.v1', JSON.stringify({ events: [] }));
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('disconnect', () => {
+    it('clears cache on disconnect', async () => {
+      localStorage.setItem('bump.gcal.cache.v1', JSON.stringify({ events: [] }));
+      await disconnect();
+      expect(localStorage.getItem('bump.gcal.cache.v1')).toBe(null);
+    });
+  });
+});
+
+describe('calendar module with mocked fetch', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  describe('refresh with mocked authorize and fetch', () => {
+    it('returns needsReconnect when not interactive and no valid token', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.needsReconnect).toBe(true);
+    });
+
+    it('returns error when authorize throws', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      vi.spyOn(google, 'grantedScopes').mockReturnValue(['some-scope']);
+      vi.spyOn(google, 'authorize').mockRejectedValue(new Error('User cancelled'));
+      
+      const result = await refresh({ interactive: true });
+      expect(result.ok).toBe(false);
+      expect(result.needsReconnect).toBe(true);
+      expect(result.error).toBe('User cancelled');
+    });
+
+    it('returns error when calendar scope not granted', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      vi.spyOn(google, 'grantedScopes').mockReturnValue([]);
+      vi.spyOn(google, 'authorize').mockResolvedValue({
+        accessToken: 'test-token',
+        scopes: ['other-scope'],
+      });
+      
+      const result = await refresh({ interactive: true });
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Calendar access was not granted');
+    });
+
+    it('fetches events successfully when authorized', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue('valid-token');
+      
+      const mockEvents = {
+        items: [
+          { id: '1', summary: '[Bump] Doctor visit', start: { dateTime: '2026-05-15T10:00:00' }, end: { dateTime: '2026-05-15T11:00:00' } },
+        ],
+      };
+      
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockEvents),
+      });
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalled();
+      
+      const cache = getCache();
+      expect(cache.events.length).toBe(1);
+      expect(cache.events[0].title).toBe('Doctor visit');
+    });
+
+    it('handles 401 response and clears token', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue('expired-token');
+      vi.spyOn(google, 'clearToken').mockImplementation(() => {});
+      
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+      });
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.needsReconnect).toBe(true);
+      expect(google.clearToken).toHaveBeenCalled();
+    });
+
+    it('handles non-401 fetch error', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue('valid-token');
+      
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      });
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('500');
+    });
+
+    it('handles network error', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue('valid-token');
+      
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network error');
+    });
+
+    it('handles paginated responses', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue('valid-token');
+      
+      let callCount = 0;
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({
+              items: [{ id: '1', summary: '[Bump] Event 1', start: { dateTime: '2026-05-15T10:00:00' } }],
+              nextPageToken: 'page2',
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({
+            items: [{ id: '2', summary: '[Bump] Event 2', start: { dateTime: '2026-05-16T10:00:00' } }],
+          }),
+        });
+      });
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      
+      const cache = getCache();
+      expect(cache.events.length).toBe(2);
+    });
+
+    it('retries with fresh token on 401 when interactive', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      let tokenCall = 0;
+      vi.spyOn(google, 'validToken').mockImplementation(() => {
+        tokenCall++;
+        return tokenCall === 1 ? 'expired-token' : null;
+      });
+      vi.spyOn(google, 'clearToken').mockImplementation(() => {});
+      vi.spyOn(google, 'grantedScopes').mockReturnValue(['calendar-scope']);
+      vi.spyOn(google, 'authorize').mockResolvedValue({
+        accessToken: 'fresh-token',
+        scopes: ['https://www.googleapis.com/auth/calendar.events.readonly'],
+      });
+      
+      let fetchCall = 0;
+      globalThis.fetch = vi.fn().mockImplementation(() => {
+        fetchCall++;
+        if (fetchCall === 1) {
+          return Promise.resolve({ ok: false, status: 401 });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ items: [] }),
+        });
+      });
+      
+      const result = await refresh({ interactive: true });
+      expect(result.ok).toBe(true);
+      expect(google.clearToken).toHaveBeenCalled();
+      expect(google.authorize).toHaveBeenCalled();
+    });
+
+    it('uses consent prompt when consent flag is true', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      vi.spyOn(google, 'grantedScopes').mockReturnValue(['some-scope']);
+      vi.spyOn(google, 'authorize').mockResolvedValue({
+        accessToken: 'new-token',
+        scopes: ['https://www.googleapis.com/auth/calendar.events.readonly'],
+      });
+      
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ items: [] }),
+      });
+      
+      await refresh({ interactive: true, consent: true });
+      expect(google.authorize).toHaveBeenCalledWith(expect.any(Array), { prompt: 'consent' });
     });
   });
 });

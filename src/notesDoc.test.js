@@ -20,7 +20,11 @@ import {
   NeedsAuthError,
   ScopeMissingError,
   SCOPE_MISSING_MSG,
+  refresh,
+  addNote,
+  useDoc,
 } from './notesDoc.js';
+import * as google from './google.js';
 
 describe('notesDoc module', () => {
   beforeEach(() => {
@@ -375,6 +379,74 @@ describe('notesDoc module', () => {
     it('creates error with message', () => {
       const err = new ScopeMissingError('Test scope message');
       expect(err.message).toBe('Test scope message');
+    });
+  });
+});
+
+describe('notesDoc API functions', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  describe('refresh', () => {
+    it('returns error when not configured', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(false);
+      const result = await refresh();
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('not set up');
+    });
+
+    it('returns offline when navigator.onLine is false', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      Object.defineProperty(navigator, 'onLine', { value: false, writable: true });
+      const result = await refresh();
+      expect(result.ok).toBe(false);
+      expect(result.offline).toBe(true);
+      Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
+    });
+
+    it('returns needsAuth when no valid token and not interactive', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
+      
+      const result = await refresh({ interactive: false });
+      expect(result.ok).toBe(false);
+      expect(result.needsAuth).toBe(true);
+    });
+  });
+
+  describe('addNote', () => {
+    it('returns error for empty text', async () => {
+      const result = await addNote({ text: '', author: '' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Write a note first');
+    });
+
+    it('returns error for whitespace-only text', async () => {
+      const result = await addNote({ text: '   ', author: '' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Write a note first');
+    });
+  });
+
+  describe('useDoc', () => {
+    it('returns error for invalid doc ID', async () => {
+      const result = await useDoc('');
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('Paste a Google Docs link');
+    });
+
+    it('returns error for short doc ID', async () => {
+      const result = await useDoc('too-short');
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('Paste a Google Docs link');
     });
   });
 });

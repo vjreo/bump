@@ -11,8 +11,17 @@ export default defineConfig({
         'src/*.js',
         'src/**/*.js',
       ],
-      exclude: ['src/**/*.test.js'],
+      exclude: [
+        'src/**/*.test.js',
+        'src/main.js',
+      ],
       all: true,
+      thresholds: {
+        lines: 70,
+        functions: 75,
+        branches: 60,
+        statements: 70,
+      },
     },
     globals: true,
   },
