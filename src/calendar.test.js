@@ -440,5 +440,28 @@ describe('calendar module with mocked fetch', () => {
       await refresh({ interactive: true, consent: true });
       expect(google.authorize).toHaveBeenCalledWith(expect.any(Array), { prompt: 'consent' });
     });
+
+    it('returns needsReconnect after exhausting retries (401 loop)', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      vi.spyOn(google, 'clearToken').mockImplementation(() => {});
+      vi.spyOn(google, 'grantedScopes').mockReturnValue(['calendar-scope']);
+      
+      // Authorize always succeeds but fetch always returns 401
+      vi.spyOn(google, 'authorize').mockResolvedValue({
+        accessToken: 'token-that-still-fails',
+        scopes: ['https://www.googleapis.com/auth/calendar.events.readonly'],
+      });
+      
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+      });
+      
+      const result = await refresh({ interactive: true });
+      // After 2 attempts both failing with 401, should return needsReconnect
+      expect(result.ok).toBe(false);
+      expect(result.needsReconnect).toBe(true);
+    });
   });
 });

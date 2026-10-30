@@ -495,4 +495,10 @@ window.addEventListener('online', () => {
   if (tab === 'notes' && notesUi.offline) syncNotes({ interactive: false });
 });
 
-render();
+/** Initialize the app: render the appropriate gate or view. Exported for testability. */
+export function init() {
+  render();
+}
+
+// Self-initialize when loaded as the app entry point
+init();

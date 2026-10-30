@@ -89,6 +89,14 @@ describe('invite module', () => {
       localStorage.setItem('bump.inviteOk.v1', 'true');
       expect(isInviteOk()).toBe(false);
     });
+
+    it('returns false when localStorage throws', () => {
+      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('Storage error');
+      });
+      expect(isInviteOk()).toBe(false);
+      getItemSpy.mockRestore();
+    });
   });
 
   describe('rememberInviteOk', () => {
@@ -97,7 +105,19 @@ describe('invite module', () => {
       rememberInviteOk();
       expect(localStorage.getItem('bump.inviteOk.v1')).toBe('1');
     });
+
+    it('logs warning when localStorage throws', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('Storage error');
+      });
+      rememberInviteOk();
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+      setItemSpy.mockRestore();
+    });
   });
+
 });
 
 describe('checkInviteCode (pure function)', () => {
@@ -150,6 +170,7 @@ describe('tryInvite integration', () => {
 
   afterEach(() => {
     localStorage.clear();
+    vi.unstubAllEnvs();
   });
 
   it('returns false and logs warning when VITE_INVITE_HASH not set', async () => {
@@ -162,5 +183,27 @@ describe('tryInvite integration', () => {
   it('getInviteHash returns string', () => {
     const hash = getInviteHash();
     expect(typeof hash).toBe('string');
+  });
+
+  it('returns false for wrong code when hash is set', async () => {
+    vi.stubEnv('VITE_INVITE_HASH', TEST_HASH);
+    // Re-import to pick up env change
+    vi.resetModules();
+    const { tryInvite: tryInviteNew } = await import('./invite.js');
+    
+    const result = await tryInviteNew('wrong-code');
+    expect(result).toBe(false);
+    expect(localStorage.getItem('bump.inviteOk.v1')).toBe(null);
+  });
+
+  it('returns true and sets flag for correct code when hash is set', async () => {
+    vi.stubEnv('VITE_INVITE_HASH', TEST_HASH);
+    // Re-import to pick up env change
+    vi.resetModules();
+    const { tryInvite: tryInviteNew } = await import('./invite.js');
+    
+    const result = await tryInviteNew(TEST_CODE);
+    expect(result).toBe(true);
+    expect(localStorage.getItem('bump.inviteOk.v1')).toBe('1');
   });
 });

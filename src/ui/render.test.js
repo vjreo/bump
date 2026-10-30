@@ -492,6 +492,35 @@ describe('UI render functions', () => {
       });
       expect(html).toContain('Tap Refresh to update');
     });
+
+    it('shows past events section when there are past events', () => {
+      const events = [
+        { id: '1', title: 'Future Event', allDay: false, start: '2030-12-01T10:00:00', end: '2030-12-01T11:00:00', location: '' },
+        { id: '2', title: 'Past Event', allDay: false, start: '2020-01-01T10:00:00', end: '2020-01-01T11:00:00', location: '' },
+      ];
+      const html = viewAppointments({
+        isConfigured: true,
+        isConnected: true,
+        cache: { events, fetchedAt: '2026-05-15T10:00:00Z' },
+        cal: { loading: false, error: '', needsReconnect: false, stale: false, pastOpen: false },
+      });
+      expect(html).toContain('id="calPast"');
+      expect(html).toContain('Past (1)');
+      expect(html).toContain('Past Event');
+    });
+
+    it('opens past section when pastOpen is true', () => {
+      const events = [
+        { id: '1', title: 'Past Event', allDay: false, start: '2020-01-01T10:00:00', end: '2020-01-01T11:00:00', location: '' },
+      ];
+      const html = viewAppointments({
+        isConfigured: true,
+        isConnected: true,
+        cache: { events, fetchedAt: '2026-05-15T10:00:00Z' },
+        cal: { loading: false, error: '', needsReconnect: false, stale: false, pastOpen: true },
+      });
+      expect(html).toContain('id="calPast" open');
+    });
   });
 
   describe('notesListCard', () => {

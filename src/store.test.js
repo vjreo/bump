@@ -185,6 +185,19 @@ describe('store module', () => {
       const saved = JSON.parse(localStorage.getItem('bump.v1'));
       expect(saved.household.dueDate).toBe(TEST_DUE_DATE);
     });
+
+    it('logs warning when localStorage throws on persist', () => {
+      store.load();
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('Storage quota exceeded');
+      });
+      // This should not throw, just warn
+      store.setupHousehold({ pin: TEST_PIN, dueDate: TEST_DUE_DATE });
+      expect(warnSpy).toHaveBeenCalledWith('persist failed', expect.any(Error));
+      warnSpy.mockRestore();
+      setItemSpy.mockRestore();
+    });
   });
 
   describe('unlock', () => {

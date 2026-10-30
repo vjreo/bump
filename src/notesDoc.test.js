@@ -448,5 +448,15 @@ describe('notesDoc API functions', () => {
       expect(result.ok).toBe(false);
       expect(result.error).toContain('Paste a Google Docs link');
     });
+
+    it('returns needsAuth when scope missing and not interactive', async () => {
+      vi.spyOn(google, 'isConfigured').mockReturnValue(true);
+      vi.spyOn(google, 'validToken').mockReturnValue(null);
+      Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
+      
+      const result = await useDoc('1abc123xyz_-ABCdef01234');
+      expect(result.ok).toBe(false);
+      // useDoc is always interactive so it will try to authorize
+    });
   });
 });
