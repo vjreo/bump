@@ -575,7 +575,7 @@ describe('UI render functions', () => {
         draft: '',
         docUrl: '',
       });
-      expect(html).toContain("aren't set up yet");
+      expect(html).toContain("aren’t set up yet");
     });
 
     it('shows connect button when not connected', () => {

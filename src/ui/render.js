@@ -75,7 +75,7 @@ export function weekCardHtml(content, { compact = false, id = '' } = {}) {
         <p>${escapeHtml(content.feel)}</p>
       </div>
       <div class="week-section">
-        <h3>This week's tip</h3>
+        <h3>This week’s tip</h3>
         <p>${escapeHtml(content.tip)}</p>
       </div>
       <p class="week-attrib">
@@ -182,7 +182,7 @@ export function renderInviteGate() {
         <div class="field">
           <label class="label" for="inviteCode">Invite code</label>
           <input class="input" type="text" id="inviteCode" placeholder="bump-…" autocomplete="off" autocapitalize="off" spellcheck="false" />
-          <p class="hint">Ask Vince for an invite if you don't have one.</p>
+          <p class="hint">Ask Vince for an invite if you don’t have one.</p>
         </div>
         <p class="err hidden" id="gateErr"></p>
         <button class="btn btn-primary" id="doInvite">Continue</button>
@@ -200,7 +200,7 @@ export function renderSetupGate() {
         <div class="brand">
           <div class="brand-mark">🌱</div>
           <h1>Bump</h1>
-          <p>Vince &amp; Chantal's shared pregnancy tracker</p>
+          <p>Vince &amp; Chantal’s shared pregnancy tracker</p>
         </div>
         <form id="setupForm" novalidate>
           <div class="field">
@@ -211,7 +211,7 @@ export function renderSetupGate() {
           <div class="field">
             <label class="label" for="pin">Household PIN (at least 4 digits)</label>
             <input class="input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin" placeholder="Shared secret" autocomplete="new-password" />
-            <p class="hint">You'll use this PIN to unlock Bump. Your data stays on this phone.</p>
+            <p class="hint">You’ll use this PIN to unlock Bump. Your data stays on this phone.</p>
           </div>
           <div class="field">
             <label class="label" for="pin2">Confirm PIN</label>
@@ -307,7 +307,7 @@ export function viewToday({ due, week, daysLeft, log, browseWeek, workoutUi, wat
         <h4 class="prep-coming-title">Looking ahead</h4>
         <ul class="prep-list muted">${aheadItems}</ul>
       </div>
-      <p class="disclaimer">Practical household reminders — not medical advice. Follow your OB or midwife's plan.</p>
+      <p class="disclaimer">Practical household reminders — not medical advice. Follow your OB or midwife’s plan.</p>
       <a class="prep-link" href="${escapeHtml(PREP_CHECKLIST_URL)}" target="_blank" rel="noopener noreferrer">See full checklist</a>
     </div>`;
     })()}
@@ -354,7 +354,7 @@ export function viewAppointments({ isConfigured, isConnected, cache, cal }) {
       <div class="card">
         <div class="card-head"><h3 class="card-title">📅 Appointments</h3></div>
         <p class="cal-lead">Calendar not set up yet</p>
-        <p class="meta">Appointments will come from Google Calendar once it's connected. ${escapeHtml(CAL_HELP)}</p>
+        <p class="meta">Appointments will come from Google Calendar once it’s connected. ${escapeHtml(CAL_HELP)}</p>
       </div>`;
   }
 
@@ -389,7 +389,7 @@ export function viewAppointments({ isConfigured, isConnected, cache, cal }) {
       <p class="meta cal-status">${escapeHtml(status)}${cal.stale && !cal.loading ? ' · Tap Refresh to update' : ''}</p>
       ${cal.needsReconnect && !cal.loading ? `
         <div class="cal-alert">
-          <p>Couldn't refresh from Google Calendar${cal.error ? ` (${escapeHtml(cal.error)})` : ''}. Showing saved events.</p>
+          <p>Couldn’t refresh from Google Calendar${cal.error ? ` (${escapeHtml(cal.error)})` : ''}. Showing saved events.</p>
           <button class="btn btn-soft btn-sm" id="calReconnect">Reconnect</button>
         </div>` : cal.error && !cal.loading ? `<p class="err" style="margin:0 0 8px">${escapeHtml(cal.error)}</p>` : ''}
       ${upcoming.length
@@ -434,7 +434,7 @@ export function notesListCard(notes, fetchedAt, docId, readOnly, status = '', no
 export function viewNotes({ isConfigured, isConnected, cache, notesUi, local, draft, docUrl }) {
   if (!isConfigured) {
     return `<div class="card"><div class="card-head"><h3 class="card-title">Shared notes</h3></div>
-      <div class="empty">Shared notes aren't set up yet.</div></div>`;
+      <div class="empty">Shared notes aren’t set up yet.</div></div>`;
   }
   
   const { notes, fetchedAt, docId } = cache;
@@ -445,7 +445,7 @@ export function viewNotes({ isConfigured, isConnected, cache, notesUi, local, dr
     return `
     <div class="card">
       <div class="card-head"><h3 class="card-title">Shared notes</h3></div>
-      <p class="meta" style="margin:0 0 12px">Notes are kept in a Google Doc called "${escapeHtml(NOTES_DOC_TITLE)}" in your Google Drive, so both phones see the same list. Bump can only open docs it creates.</p>
+      <p class="meta" style="margin:0 0 12px">Notes are kept in a Google Doc called “${escapeHtml(NOTES_DOC_TITLE)}” in your Google Drive, so both phones see the same list. Bump can only open docs it creates.</p>
       ${notesUi.error ? `<p class="err" style="margin:0 0 10px">${escapeHtml(notesUi.error)}</p>` : ''}
       ${draft ? '<p class="meta" style="margin:0 0 10px">Your unsent note is kept on this phone and will be waiting after you connect.</p>' : ''}
       <button class="btn btn-primary" id="notesConnect" ${notesUi.loading ? 'disabled' : ''}>${notesUi.loading ? 'Connecting…' : 'Connect shared notes'}</button>
@@ -460,14 +460,14 @@ export function viewNotes({ isConfigured, isConnected, cache, notesUi, local, dr
   return `
     ${notesUi.offline || notesUi.needsAuth ? `
     <div class="cal-alert notes-alert">
-      <p>${notesUi.offline ? "You're offline. Showing notes saved on this phone (read-only)." : "Couldn't reach the shared notes doc. Showing saved notes (read-only)."}</p>
+      <p>${notesUi.offline ? "You’re offline. Showing notes saved on this phone (read-only)." : "Couldn’t reach the shared notes doc. Showing saved notes (read-only)."}</p>
       ${notesUi.needsAuth ? '<button class="btn btn-soft btn-sm" id="notesReconnect">Sign in again</button>' : ''}
     </div>` : ''}
     ${local.length && !readOnly ? `
     <div class="card">
       <div class="card-head"><h3 class="card-title">Notes on this phone</h3></div>
       <p class="meta" style="margin:0 0 12px">${local.length} note${local.length === 1 ? ' is' : 's are'} saved only on this phone. Copy ${local.length === 1 ? 'it' : 'them'} to the shared doc once; after that, Bump uses only the shared doc.</p>
-      <button class="btn btn-sage btn-sm" id="notesMigrate" ${busy ? 'disabled' : ''}>${notesUi.busy === 'copy' ? 'Copying…' : "Copy my phone's notes to the shared doc"}</button>
+      <button class="btn btn-sage btn-sm" id="notesMigrate" ${busy ? 'disabled' : ''}>${notesUi.busy === 'copy' ? 'Copying…' : "Copy my phone’s notes to the shared doc"}</button>
     </div>` : ''}
     <div class="card">
       <div class="card-head"><h3 class="card-title">New note</h3></div>
@@ -511,7 +511,7 @@ export function viewSettings({ household, waterGoal, waterGoalMin, waterGoalMax,
         </div>
         ${notesUi?.docError ? `<p class="err" style="margin:-8px 0 10px">${escapeHtml(notesUi.docError)}</p>` : ''}
         ${notesUi?.docMsg ? `<p class="meta" style="margin:-8px 0 10px">${escapeHtml(notesUi.docMsg)}</p>` : ''}
-        <p class="meta" style="margin:0 0 12px">Bump can only open docs it created itself (Google's most limited Drive permission), such as a "${escapeHtml(NOTES_DOC_TITLE)}" doc made from the other phone.</p>
+        <p class="meta" style="margin:0 0 12px">Bump can only open docs it created itself (Google’s most limited Drive permission), such as a “${escapeHtml(NOTES_DOC_TITLE)}” doc made from the other phone.</p>
       </form>` : ''}
       ${calOn || notesOn ? '<button class="btn btn-ghost btn-sm" id="googleDisconnect">Disconnect Google</button>' : ''}
     </div>`;
