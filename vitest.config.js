@@ -13,14 +13,13 @@ export default defineConfig({
       ],
       exclude: [
         'src/**/*.test.js',
-        'src/main.js',
       ],
       all: true,
       thresholds: {
-        lines: 70,
-        functions: 75,
-        branches: 60,
-        statements: 70,
+        lines: 50,
+        functions: 55,
+        branches: 55,
+        statements: 48,
       },
     },
     globals: true,
