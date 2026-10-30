@@ -27,6 +27,7 @@ import {
   formatNYDate,
   addDays,
 } from './utils/dates.js';
+import { escapeHtml, formatLongDate, dueCountdown } from './utils/helpers.js';
 
 const app = document.getElementById('app');
 
@@ -50,14 +51,6 @@ const CAL_HELP = `Add ${CALENDAR_TAG} to an event title in your Google Calendar 
 
 store.load();
 
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function render() {
   const s = store.getState();
   if (!isInviteOk()) {
@@ -75,14 +68,6 @@ function render() {
   }
   renderApp(s);
   bindDateFields(app);
-}
-
-/** "May 7, 2027" for a YYYY-MM-DD value. */
-function formatLongDate(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
-  if (!m) return '';
-  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' })
-    .format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
 }
 
 /**
@@ -326,12 +311,6 @@ function weekCardHtml(content, { compact = false, id = '' } = {}) {
     </article>`;
 }
 
-function dueCountdown(daysLeft) {
-  if (daysLeft == null) return { n: '—', l: 'Days to due' };
-  if (daysLeft > 0) return { n: daysLeft, l: 'Days to due' };
-  if (daysLeft === 0) return { n: 0, l: 'Due today' };
-  return { n: Math.abs(daysLeft), l: 'Days past due' };
-}
 
 /** Shared "done" checkbox: a real checkbox inside a 44px-tall label (the label text toggles it too). */
 function checkbox(id, label, checked) {
