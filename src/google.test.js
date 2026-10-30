@@ -75,6 +75,17 @@ describe('google module', () => {
       writeJSON('test-key', nested);
       expect(readJSON('test-key')).toEqual(nested);
     });
+
+    it('logs warning when localStorage throws', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('Storage error');
+      });
+      writeJSON('test-key', { foo: 'bar' });
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+      setItemSpy.mockRestore();
+    });
   });
 
   describe('grantedScopes', () => {
