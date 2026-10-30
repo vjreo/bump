@@ -4,8 +4,12 @@
  * This is security-through-obscurity for a static site — not real auth.
  */
 
-const INVITE_HASH = String(import.meta.env.VITE_INVITE_HASH || '').toLowerCase();
 const FLAG_KEY = 'bump.inviteOk.v1';
+
+/** Get the invite hash (allows lazy evaluation for testability) */
+export function getInviteHash() {
+  return String(import.meta.env.VITE_INVITE_HASH || '').toLowerCase();
+}
 
 export async function sha256Hex(text) {
   const data = new TextEncoder().encode(text);
@@ -37,18 +41,29 @@ export function normalizeInvite(code) {
 }
 
 /**
- * Check invite code against baked hash.
- * On success, persists unlock flag in localStorage.
+ * Pure function to check if code matches expected hash.
+ * Useful for testing without env vars.
  */
-export async function tryInvite(code) {
-  if (!INVITE_HASH) {
-    console.warn('[bump] VITE_INVITE_HASH not set — invite gate cannot unlock');
-    return false;
-  }
+export async function checkInviteCode(code, expectedHash) {
+  if (!expectedHash) return false;
   const normalized = normalizeInvite(code);
   if (!normalized) return false;
   const hash = await sha256Hex(normalized);
-  if (hash === INVITE_HASH) {
+  return hash === expectedHash.toLowerCase();
+}
+
+/**
+ * Check invite code against baked hash from env.
+ * On success, persists unlock flag in localStorage.
+ */
+export async function tryInvite(code) {
+  const inviteHash = getInviteHash();
+  if (!inviteHash) {
+    console.warn('[bump] VITE_INVITE_HASH not set — invite gate cannot unlock');
+    return false;
+  }
+  const isValid = await checkInviteCode(code, inviteHash);
+  if (isValid) {
     rememberInviteOk();
     return true;
   }
